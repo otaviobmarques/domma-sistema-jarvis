@@ -40,8 +40,8 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     // Long-poll: devolve a próxima ação ou {acao:null} após ~25 s
     dev.post("/device/poll", async (req) => {
-      const b = z.object({ info: z.record(z.string(), z.unknown()).optional() }).parse(req.body ?? {});
-      await marcarVisto(req.device!.id, b.info);
+      const b = z.object({ info: z.record(z.string(), z.unknown()).nullish() }).parse(req.body ?? {});
+      await marcarVisto(req.device!.id, b.info ?? undefined);
       const a = await proximaAcao(req.device!.id, 25_000);
       await marcarVisto(req.device!.id);
       return { acao: a };

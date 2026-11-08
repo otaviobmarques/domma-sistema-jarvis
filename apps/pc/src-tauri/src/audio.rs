@@ -2,10 +2,12 @@
 //! transcrito no cérebro (Fase 2.2 trará transcrição local + palavra de ativação).
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::io::Cursor;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 pub struct Gravador {
+    /// Nível do microfone (0..1) para a animação reagir à voz
+    pub nivel: Arc<AtomicU32>,
     parar: Arc<AtomicBool>,
     amostras: Arc<Mutex<Vec<f32>>>,
     taxa: Arc<Mutex<u32>>,
@@ -14,7 +16,7 @@ pub struct Gravador {
 
 impl Gravador {
     pub fn novo() -> Gravador {
-        Gravador { parar: Arc::new(AtomicBool::new(false)), amostras: Arc::default(), taxa: Arc::new(Mutex::new(16000)), fim: None }
+        Gravador { nivel: Arc::new(AtomicU32::new(0)), parar: Arc::new(AtomicBool::new(false)), amostras: Arc::default(), taxa: Arc::new(Mutex::new(16000)), fim: None }
     }
 
     pub fn gravando(&self) -> bool {
@@ -27,7 +29,7 @@ impl Gravador {
         }
         self.parar.store(false, Ordering::SeqCst);
         self.amostras.lock().unwrap().clear();
-        let (parar, amostras, taxa) = (self.parar.clone(), self.amostras.clone(), self.taxa.clone());
+        let (parar, amostras, taxa, nivel) = (self.parar.clone(), self.amostras.clone(), self.taxa.clone(), self.nivel.clone());
         let (tx_ok, rx_ok) = mpsc::channel::<Result<(), String>>();
         let (tx_fim, rx_fim) = mpsc::channel::<Result<(), String>>();
 
@@ -41,12 +43,21 @@ impl Gravador {
                 *taxa.lock().unwrap() = cfg.sample_rate().0;
                 let err = |e| log::warn!("erro no microfone: {e}");
                 let a = amostras.clone();
+                let nv = nivel.clone();
+                let medir = move |v: &[f32]| {
+                    if v.is_empty() {
+                        return;
+                    }
+                    let rms = (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+                    nv.store((rms * 4.0).min(1.0).to_bits(), Ordering::Relaxed);
+                };
                 let stream = match cfg.sample_format() {
                     cpal::SampleFormat::F32 => dev.build_input_stream(
                         &cfg.into(),
                         move |d: &[f32], _: &_| {
-                            let mut v = a.lock().unwrap();
-                            v.extend(d.chunks(canais).map(|c| c.iter().sum::<f32>() / canais as f32));
+                            let m: Vec<f32> = d.chunks(canais).map(|c| c.iter().sum::<f32>() / canais as f32).collect();
+                            medir(&m);
+                            a.lock().unwrap().extend(m);
                         },
                         err,
                         None,
@@ -54,8 +65,9 @@ impl Gravador {
                     cpal::SampleFormat::I16 => dev.build_input_stream(
                         &cfg.into(),
                         move |d: &[i16], _: &_| {
-                            let mut v = a.lock().unwrap();
-                            v.extend(d.chunks(canais).map(|c| c.iter().map(|&x| x as f32 / 32768.0).sum::<f32>() / canais as f32));
+                            let m: Vec<f32> = d.chunks(canais).map(|c| c.iter().map(|&x| x as f32 / 32768.0).sum::<f32>() / canais as f32).collect();
+                            medir(&m);
+                            a.lock().unwrap().extend(m);
                         },
                         err,
                         None,
@@ -63,8 +75,9 @@ impl Gravador {
                     cpal::SampleFormat::U16 => dev.build_input_stream(
                         &cfg.into(),
                         move |d: &[u16], _: &_| {
-                            let mut v = a.lock().unwrap();
-                            v.extend(d.chunks(canais).map(|c| c.iter().map(|&x| (x as f32 - 32768.0) / 32768.0).sum::<f32>() / canais as f32));
+                            let m: Vec<f32> = d.chunks(canais).map(|c| c.iter().map(|&x| (x as f32 - 32768.0) / 32768.0).sum::<f32>() / canais as f32).collect();
+                            medir(&m);
+                            a.lock().unwrap().extend(m);
                         },
                         err,
                         None,
@@ -100,6 +113,7 @@ impl Gravador {
     /// Para e devolve o WAV (16 bits, mono).
     pub fn parar(&mut self) -> Result<Vec<u8>, String> {
         let fim = self.fim.take().ok_or("Não estava gravando.")?;
+        self.nivel.store(0, Ordering::Relaxed);
         self.parar.store(true, Ordering::SeqCst);
         fim.recv().map_err(|e| e.to_string())??;
         let amostras = std::mem::take(&mut *self.amostras.lock().unwrap());

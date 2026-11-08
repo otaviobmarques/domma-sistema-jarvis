@@ -48,26 +48,28 @@
         </div>
         <div class="acoes-topo">
           <span id="status" class="status" title="Conexão com o Jarvis"><i></i><em>conectando…</em></span>
+          <button id="btn-cheia" class="icone" title="Modo Jarvis (tela cheia) — F11">⛶</button>
           <button id="btn-config" class="icone" title="Configurações">⚙</button>
         </div>
       </header>
 
       <div class="palco">
-        <div id="orb" class="orb"><div class="anel"></div><div class="nucleo"></div></div>
+        <canvas id="tavinho" width="320" height="320" title="Clique duas vezes para tela cheia"></canvas>
         <div id="legenda" class="legenda">Diga ou escreva o que precisa.</div>
         <div id="acao-atual" class="acao-atual" hidden></div>
+        <button id="btn-conversa" class="conversar" type="button" title="Ctrl+Shift+Espaço">🎙️ Conversar com o Jarvis</button>
       </div>
 
       <div id="conversa" class="conversa"></div>
 
       <form id="form-chat" class="entrada">
-        <button type="button" id="btn-mic" class="mic" title="Falar (Ctrl+Shift+Espaço)">🎤</button>
+        <button type="button" id="btn-mic" class="mic" title="Gravar um áudio (clique para começar e para enviar)">🎤</button>
         <input id="texto" placeholder="Pedir ao Jarvis…  (Ctrl+Espaço)" autocomplete="off" />
         <button class="btn enviar" title="Enviar">➤</button>
       </form>
       <div class="rodape">
         <button id="btn-panico" class="panico" type="button">⛔ Parar tudo</button>
-        <span class="muted">Ctrl+Espaço abre · Ctrl+Shift+Espaço fala</span>
+        <span class="muted">Ctrl+Espaço abre · Ctrl+Shift+Espaço conversa</span>
       </div>
     </section>
 
@@ -83,6 +85,7 @@
       </div>
     </dialog>
 
+    <script src="tavinho.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

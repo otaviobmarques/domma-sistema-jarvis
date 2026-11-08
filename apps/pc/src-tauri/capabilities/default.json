@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Janela principal do Jarvis",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default", "core:window:allow-hide", "core:window:allow-show", "core:window:allow-set-focus", "global-shortcut:default", "autostart:default"]
+  "permissions": ["core:default", "core:event:default", "core:window:allow-hide", "core:window:allow-show", "core:window:allow-set-focus", "core:window:allow-set-fullscreen", "global-shortcut:default", "autostart:default"]
 }

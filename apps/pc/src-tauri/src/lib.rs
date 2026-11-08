@@ -1,11 +1,12 @@
 //! Jarvis by Domma Tecnologia — app de PC (Fase 2).
 //! - Bandeja do sistema, inicia com o Windows, Ctrl+Espaço abre a caixa de comando
-//! - Ctrl+Shift+Espaço: aperte para falar
+//! - Ctrl+Shift+Espaço: liga/desliga o Modo Conversa (falar em tempo real)
 //! - Conexão permanente com o cérebro (long-polling) para executar ações no PC
 mod acoes;
 mod api;
 mod audio;
 mod config;
+mod conversa;
 
 use api::Api;
 use base64::Engine;
@@ -21,6 +22,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 struct AppState {
     config: Mutex<Config>,
     gravador: Mutex<audio::Gravador>,
+    conversa: conversa::Conversa,
 }
 
 fn api(state: &AppState) -> Api {
@@ -115,11 +117,52 @@ async fn gravar_fim(state: State<'_, AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn conversa_iniciar(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if state.config.lock().unwrap().privacidade {
+        return Err("Modo privacidade ligado: o microfone está desligado.".into());
+    }
+    let nivel = state.gravador.lock().unwrap().nivel.clone();
+    let app2 = app.clone();
+    state.conversa.iniciar(app, nivel, move || {
+        let st = app2.state::<AppState>();
+        api(&st)
+    })
+}
+
+#[tauri::command]
+fn conversa_parar(state: State<'_, AppState>) {
+    state.conversa.parar();
+}
+
+#[tauri::command]
+fn conversa_modo(state: State<'_, AppState>, modo: String) {
+    let m = match modo.as_str() {
+        "pausado" => conversa::PAUSADO,
+        "falando" => conversa::FALANDO,
+        _ => conversa::OUVINDO,
+    };
+    state.conversa.modo.store(m, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn nivel_mic(state: State<'_, AppState>) -> f32 {
+    f32::from_bits(state.gravador.lock().unwrap().nivel.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[tauri::command]
+fn tela_cheia(app: AppHandle, ligar: bool) -> Result<(), String> {
+    let w = app.get_webview_window("main").ok_or("janela")?;
+    w.set_fullscreen(ligar).map_err(|e| e.to_string())?;
+    w.set_always_on_top(!ligar).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn preferencias(state: State<'_, AppState>, privacidade: bool, falar_respostas: bool) -> Result<(), String> {
     let mut c = state.config.lock().unwrap();
     c.privacidade = privacidade;
     c.falar_respostas = falar_respostas;
     if privacidade {
+        state.conversa.parar();
         let mut g = state.gravador.lock().unwrap();
         if g.gravando() {
             let _ = g.parar();
@@ -211,8 +254,8 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(AppState { config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()) })
-        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, preferencias, panico, esconder])
+        .manage(AppState { config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()), conversa: conversa::Conversa::nova() })
+        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder])
         .setup(move |app| {
             // atalhos globais
             let gs = app.global_shortcut();

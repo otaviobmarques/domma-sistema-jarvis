@@ -386,3 +386,42 @@ dialog::backdrop {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 8px;
 }
+
+/* Tavinho (animação) */
+#tavinho {
+  width: 200px;
+  height: 200px;
+  cursor: pointer;
+}
+body.cheia #tavinho {
+  width: min(62vh, 70vw);
+  height: min(62vh, 70vw);
+}
+body.cheia .palco {
+  flex: 1;
+  justify-content: center;
+}
+body.cheia .legenda {
+  font-size: 20px;
+  color: var(--texto);
+}
+body.cheia .conversa {
+  max-height: 22vh;
+}
+
+.conversar {
+  margin-top: 4px;
+  background: rgba(111, 92, 246, 0.18);
+  color: #e4e0ff;
+  border: 1px solid rgba(111, 92, 246, 0.5);
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.conversar.ativa {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+}

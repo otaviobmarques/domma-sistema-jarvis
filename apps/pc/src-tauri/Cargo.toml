@@ -1,6 +1,6 @@
 [package]
 name = "jarvis-pc"
-version = "0.1.0"
+version = "0.1.1"
 description = "Jarvis by Domma Tecnologia — app de PC"
 authors = ["Domma Tecnologia"]
 edition = "2021"

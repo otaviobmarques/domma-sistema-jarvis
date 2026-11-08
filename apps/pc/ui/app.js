@@ -8,7 +8,7 @@ let ocupado = false;
 
 // ------------------------------------------------------------------ esfera / legenda
 function orb(modo, legenda) {
-  $("orb").className = "orb " + (modo || "");
+  window.Tavinho?.estado(modo || "");
   if (legenda !== undefined) $("legenda").textContent = legenda;
 }
 
@@ -25,16 +25,28 @@ function vozPtBr() {
   const vozes = speechSynthesis.getVoices();
   return vozes.find((v) => v.lang === "pt-BR" && /Francisca|Antonio|Thalita|Natural/i.test(v.name)) || vozes.find((v) => v.lang.startsWith("pt"));
 }
+function voltarAOuvir() {
+  if (emConversa) {
+    invoke("conversa_modo", { modo: "ouvindo" });
+    orb("ouvindo", "Pode falar…");
+  } else orb("", "Pronto.");
+}
 function falar(texto) {
-  if (!estado.falar_respostas || !("speechSynthesis" in window)) return orb("", "Pronto.");
+  // no Modo Conversa a resposta é sempre falada
+  if ((!estado.falar_respostas && !emConversa) || !("speechSynthesis" in window)) return voltarAOuvir();
   const limpo = texto.replace(/\*+/g, "").replace(/https?:\/\/\S+/g, "link").replace(/[#_`>|]/g, "").slice(0, 1200);
   const u = new SpeechSynthesisUtterance(limpo);
   u.lang = "pt-BR";
   const v = vozPtBr();
   if (v) u.voice = v;
   u.rate = 1.05;
-  u.onstart = () => orb("falando");
-  u.onend = () => orb("", "Pronto.");
+  u.onstart = () => {
+    orb("falando");
+    if (emConversa) invoke("conversa_modo", { modo: "falando" });
+  };
+  u.onboundary = () => window.Tavinho?.pulso();
+  u.onend = () => voltarAOuvir();
+  u.onerror = () => voltarAOuvir();
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
 }
@@ -56,6 +68,7 @@ async function enviar(texto, voz = false) {
   } catch (e) {
     orb("erro", String(e));
     addMsg("jarvis", "⚠️ " + e);
+    if (emConversa) setTimeout(voltarAOuvir, 1500);
   } finally {
     ocupado = false;
     $("acao-atual").hidden = true;
@@ -79,6 +92,7 @@ async function alternarMic() {
       await invoke("gravar_inicio");
       gravando = true;
       $("btn-mic").classList.add("gravando");
+      medirNivel();
       orb("ouvindo", "Ouvindo… clique de novo (ou Ctrl+Shift+Espaço) para enviar.");
     } catch (e) {
       orb("erro", String(e));
@@ -97,6 +111,68 @@ async function alternarMic() {
   }
 }
 $("btn-mic").addEventListener("click", alternarMic);
+
+// ------------------------------------------------------------------ Modo Conversa (tempo real)
+let emConversa = false;
+let medindo = false;
+async function medirNivel() {
+  if (medindo) return;
+  medindo = true;
+  while (emConversa || gravando) {
+    window.Tavinho?.nivel(await invoke("nivel_mic").catch(() => 0));
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  window.Tavinho?.nivel(0);
+  medindo = false;
+}
+async function alternarConversa() {
+  if (emConversa) {
+    emConversa = false;
+    speechSynthesis.cancel();
+    await invoke("conversa_parar");
+    $("btn-conversa").classList.remove("ativa");
+    $("btn-conversa").textContent = "🎙️ Conversar com o Jarvis";
+    orb("", "Conversa encerrada.");
+    return;
+  }
+  try {
+    await invoke("conversa_iniciar");
+    emConversa = true;
+    $("btn-conversa").classList.add("ativa");
+    $("btn-conversa").textContent = "⏹ Encerrar conversa";
+    orb("ouvindo", "Pode falar… (diga “Jarvis, para” para encerrar)");
+    medirNivel();
+  } catch (e) {
+    orb("erro", String(e));
+  }
+}
+$("btn-conversa").addEventListener("click", alternarConversa);
+listen("conversa_ouvindo", () => emConversa && orb("ouvindo", "Ouvindo…"));
+listen("conversa_processando", () => orb("pensando", "Entendendo…"));
+listen("conversa_retomou", () => emConversa && orb("ouvindo", "Pode falar…"));
+listen("conversa_interrompeu", () => {
+  speechSynthesis.cancel();
+  orb("ouvindo", "Ouvindo…");
+});
+listen("conversa_erro", (e) => {
+  orb("erro", String(e.payload));
+  setTimeout(voltarAOuvir, 1500);
+});
+listen("conversa_fim", () => {
+  if (emConversa) {
+    emConversa = false;
+    $("btn-conversa").classList.remove("ativa");
+    $("btn-conversa").textContent = "🎙️ Conversar com o Jarvis";
+  }
+});
+listen("conversa_texto", async (e) => {
+  const texto = e.payload.texto;
+  if (/^(jarvis,?\s*)?(para|pare|chega|encerra|tchau|obrigado,? jarvis)[.!]?$/i.test(texto.trim())) {
+    addMsg("eu", texto);
+    return alternarConversa();
+  }
+  await enviar(texto, true);
+});
 
 // ------------------------------------------------------------------ pânico
 $("btn-panico").addEventListener("click", async () => {
@@ -144,6 +220,16 @@ $("btn-desparear").addEventListener("click", async () => {
   await carregar();
 });
 
+// ------------------------------------------------------------------ Modo Jarvis (tela cheia)
+let cheia = false;
+async function alternarTelaCheia() {
+  cheia = !cheia;
+  document.body.classList.toggle("cheia", cheia);
+  await invoke("tela_cheia", { ligar: cheia }).catch(() => {});
+}
+$("btn-cheia").addEventListener("click", alternarTelaCheia);
+$("tavinho").addEventListener("dblclick", alternarTelaCheia);
+
 // ------------------------------------------------------------------ eventos do núcleo
 const NOMES = { abrir: "abrindo", arquivos: "mexendo em arquivos", apagar: "apagando", comando: "rodando comando", janelas: "olhando as janelas", print: "olhando a tela", mouse: "usando o mouse", teclado: "digitando" };
 listen("acao", (e) => {
@@ -159,11 +245,15 @@ listen("conexao", (e) => {
   if (s === "desconectado") carregar();
 });
 listen("foco", () => setTimeout(() => $("texto").focus(), 50));
-listen("falar", () => alternarMic());
+listen("falar", () => alternarConversa());
 listen("parado", () => orb("erro", "⛔ Parei tudo."));
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("dlg-config").open) invoke("esconder");
+  if (e.key === "F11") {
+    e.preventDefault();
+    alternarTelaCheia();
+  } else if (e.key === "Escape" && cheia) alternarTelaCheia();
+  else if (e.key === "Escape" && !$("dlg-config").open) invoke("esconder");
 });
 
 // ------------------------------------------------------------------ início

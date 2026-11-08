@@ -242,6 +242,17 @@ export async function salvarChave(tipo: "anthropic" | "stt", key: string): Promi
   }
 }
 
+export async function salvarGoogleOAuth(client_id: string, client_secret: string): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/integrations/google-oauth", u.id, { body: { client_id, client_secret } });
+    revalidatePath("/integracoes");
+    return { ok: true, msg: "Credenciais salvas. Agora clique em Conectar conta Google." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function adicionarFonte(nome: string, descricao: string, url: string): Promise<Result> {
   const u = await requireUser(["dono"]);
   try {

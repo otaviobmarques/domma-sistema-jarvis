@@ -1,5 +1,5 @@
 import { removerIntegracao } from "@/app/actions";
-import { ActionButton, FonteForm, GoogleConnect, KeyForm, MetaForm, WhatsAppPanel } from "@/components/client";
+import { ActionButton, FonteForm, GoogleConnect, GoogleOAuthForm, KeyForm, MetaForm, WhatsAppPanel } from "@/components/client";
 import { brain } from "@/lib/brain";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
@@ -18,7 +18,7 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
   const faltando = [
     !keys?.anthropic && "Chave da API do Claude (sem ela o Jarvis não pensa)",
     !keys?.stt && "Transcrição de áudio (para entender áudios do WhatsApp)",
-    !keys?.google && "Google OAuth (GOOGLE_CLIENT_ID/SECRET no cérebro) para Gmail, Agenda e Drive",
+    !keys?.google && "Credenciais do Google (seção Google abaixo) para Gmail, Agenda e Drive",
     !meta && "Token da Meta Ads",
   ].filter(Boolean) as string[];
 
@@ -26,6 +26,7 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
     <div className="space-y-6">
       <h1 className="title">Integrações</h1>
       {google === "ok" && <div className="card text-sm text-green-600">Conta Google conectada.</div>}
+      {google && google !== "ok" && <div className="card text-sm text-red-600">O Google recusou a conexão ({google}). Confira as credenciais e tente de novo.</div>}
 
       {faltando.length > 0 && (
         <div className="card text-sm">
@@ -58,7 +59,31 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
       <section className="card space-y-2">
         <h2 className="font-semibold">Google (Gmail, Agenda, Drive, Google Ads)</h2>
         <p className="muted text-sm">Cada usuário conecta a própria conta. Permissões pedidas: Gmail (ler/rascunhar/enviar), Agenda, Drive (leitura) e Google Ads.</p>
-        <GoogleConnect conectado={g ? (g.config?.email ?? "conectado") : null} />
+        {keys?.google ? (
+          <GoogleConnect conectado={g ? (g.config?.email ?? "conectado") : null} />
+        ) : (
+          <ol className="text-sm list-decimal ml-5 space-y-1">
+            <li>
+              Em <a className="underline" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">console.cloud.google.com → APIs e serviços → Credenciais</a>, crie um projeto (ex.: “Jarvis”).
+            </li>
+            <li>Em “Biblioteca”, ative: Gmail API, Google Calendar API, Google Drive API (e Google Ads API, se for usar).</li>
+            <li>Em “Tela de permissão OAuth”: tipo Externo (ou Interno, se for Google Workspace), adicione seu e-mail como usuário de teste.</li>
+            <li>
+              Em “Criar credenciais → ID do cliente OAuth”: tipo <b>Aplicativo da Web</b>, URI de redirecionamento autorizado:
+              <code className="block mt-1 p-1 rounded" style={{ background: "var(--bg)" }}>https://jarvis.dommasistemas.com.br/oauth/google/callback</code>
+            </li>
+            <li>Cole abaixo o ID e a chave secreta gerados.</li>
+          </ol>
+        )}
+        {(
+
+          <details className="text-sm" open={!keys?.google}>
+            <summary className="cursor-pointer muted">{keys?.google ? "Trocar credenciais do Google" : "Credenciais do Google"}</summary>
+            <div className="mt-2">
+              <GoogleOAuthForm configurado={!!keys?.google} />
+            </div>
+          </details>
+        )}
       </section>
 
       <section className="card space-y-2">

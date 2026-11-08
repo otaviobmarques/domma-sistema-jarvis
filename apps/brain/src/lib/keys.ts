@@ -19,6 +19,11 @@ export function applyKey(tipo: "anthropic" | "stt", key: string) {
   else config.stt.apiKey = key;
 }
 
+export function applyGoogle(clientId: string, clientSecret: string) {
+  config.google.clientId = clientId;
+  config.google.clientSecret = clientSecret;
+}
+
 export async function loadStoredKeys() {
   for (const t of await tenantIds()) {
     const a = await getIntegration(t, "anthropic");
@@ -28,5 +33,7 @@ export async function loadStoredKeys() {
     }
     const s = await getIntegration(t, "stt");
     if (s?.tokens.api_key && !process.env.STT_API_KEY) applyKey("stt", s.tokens.api_key);
+    const g = await getIntegration(t, "google_oauth");
+    if (g?.tokens.client_id && !process.env.GOOGLE_CLIENT_ID) applyGoogle(g.tokens.client_id, g.tokens.client_secret);
   }
 }

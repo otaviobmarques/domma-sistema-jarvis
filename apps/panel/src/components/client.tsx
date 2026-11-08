@@ -14,6 +14,7 @@ import {
   rotinaRodar,
   salvarConta,
   salvarChave,
+  salvarGoogleOAuth,
   salvarMeta,
   usuarioSalvar,
   whatsappLogout,
@@ -193,6 +194,34 @@ export function WhatsAppPanel() {
       </p>
       {img ? <img src={img} alt="QR Code do WhatsApp" width={260} height={260} className="rounded bg-white p-2" /> : <p className="muted text-sm">Gerando QR Code…</p>}
       <p className="text-xs muted">⚠️ Conexão por QR Code é para testes e uso pessoal; para produção use a API Oficial da Meta.</p>
+    </div>
+  );
+}
+
+export function GoogleOAuthForm({ configurado }: { configurado: boolean }) {
+  const [f, setF] = useState({ id: "", secret: "" });
+  const [msg, setMsg] = useState<{ ok: boolean; msg?: string } | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-2">
+      {configurado && <p className="text-sm">✅ Credenciais do Google configuradas no servidor</p>}
+      <div className="grid md:grid-cols-2 gap-2">
+        <input className="input" placeholder="ID do cliente (….apps.googleusercontent.com)" value={f.id} onChange={(e) => setF({ ...f, id: e.target.value.trim() })} />
+        <input className="input" type="password" autoComplete="off" placeholder="Chave secreta do cliente (GOCSPX-…)" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value.trim() })} />
+      </div>
+      <button
+        className="btn btn-ghost"
+        disabled={pending || !f.id || !f.secret}
+        onClick={() =>
+          start(async () => {
+            setMsg(await salvarGoogleOAuth(f.id, f.secret));
+            setF({ id: "", secret: "" });
+          })
+        }
+      >
+        Salvar credenciais
+      </button>
+      <Msg m={msg} />
     </div>
   );
 }

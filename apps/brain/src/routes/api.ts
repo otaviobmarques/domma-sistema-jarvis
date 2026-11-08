@@ -11,7 +11,7 @@ import { config } from "../lib/config.js";
 import { hashPin, safeEqual } from "../lib/crypto.js";
 import { audit, db } from "../lib/db.js";
 import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } from "../lib/integrations.js";
-import { applyKey } from "../lib/keys.js";
+import { applyGoogle, applyKey } from "../lib/keys.js";
 import { log } from "../lib/log.js";
 import { userById } from "../lib/users.js";
 import { reloadRoutines, runRoutine } from "../scheduler.js";
@@ -78,7 +78,14 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/oauth/google/callback", async (req, reply) => {
     const { code, state } = req.query as { code?: string; state?: string };
     const data = state ? verify<{ uid: string }>(state) : null;
-    if (!code || !data) return reply.code(400).send("requisição inválida");
+    const { error } = req.query as { error?: string };
+    if (error) return reply.redirect(`${config.panelUrl}/integracoes?google=${encodeURIComponent(error)}`);
+    if (!code || !data) {
+      return reply
+        .code(400)
+        .type("text/html; charset=utf-8")
+        .send(`<meta charset="utf-8"><p style="font-family:sans-serif">Este endereço é o retorno do login do Google e não deve ser aberto diretamente.<br>Para conectar, use o botão <b>Conectar conta Google</b> em <a href="${config.panelUrl}/integracoes">Integrações</a>.</p>`);
+    }
     const user = await userById(data.uid);
     if (!user) return reply.code(400).send("usuário inválido");
     const client = googleOAuthClient();
@@ -214,6 +221,17 @@ export async function registerRoutes(app: FastifyInstance) {
       await saveIntegration({ tenantId: u.tenant_id, userId: null, tipo, tokens: { api_key: key } });
       applyKey(tipo, key);
       await audit(u.id, `integracao.${tipo}.salvar`);
+      return { ok: true };
+    });
+
+    api.post("/api/integrations/google-oauth", async (req) => {
+      const u = needOwner(req);
+      const b = z
+        .object({ client_id: z.string().regex(/\.apps\.googleusercontent\.com$/, "ID do cliente deve terminar em .apps.googleusercontent.com"), client_secret: z.string().min(10).max(200) })
+        .parse(req.body);
+      await saveIntegration({ tenantId: u.tenant_id, userId: null, tipo: "google_oauth", tokens: b });
+      applyGoogle(b.client_id, b.client_secret);
+      await audit(u.id, "integracao.google_oauth.salvar");
       return { ok: true };
     });
 

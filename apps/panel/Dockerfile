@@ -17,5 +17,6 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=build /app/apps/panel/.next/standalone ./
 COPY --from=build /app/apps/panel/.next/static ./apps/panel/.next/static
+COPY --from=build /app/apps/panel/public ./apps/panel/public
 EXPOSE 3000
 CMD ["node", "apps/panel/server.js"]

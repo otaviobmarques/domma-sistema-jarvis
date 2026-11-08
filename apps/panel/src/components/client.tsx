@@ -1,6 +1,7 @@
 "use client";
 
 import QRCode from "qrcode";
+import { Icon } from "./icons";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   adicionarFonte,
@@ -34,10 +35,10 @@ export function PanicButton({ pausado, dono }: { pausado: boolean; dono: boolean
   const [msg, setMsg] = useState<string>();
   if (pausado) {
     return (
-      <div className="space-y-1">
-        <div className="text-xs text-amber-600">⏸️ Jarvis pausado</div>
-        <button className="btn w-full justify-center" disabled={pending} onClick={() => start(async () => void (await retomar(dono)))}>
-          Retomar
+      <div className="space-y-2 rounded-xl p-3" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" }}>
+        <div className="text-xs font-medium text-amber-300">⏸ Jarvis pausado</div>
+        <button className="btn w-full" disabled={pending} onClick={() => start(async () => void (await retomar(dono)))}>
+          <Icon name="play" size={14} /> Retomar
         </button>
       </div>
     );
@@ -45,7 +46,8 @@ export function PanicButton({ pausado, dono }: { pausado: boolean; dono: boolean
   return (
     <div className="space-y-1">
       <button
-        className="btn btn-danger w-full justify-center"
+        className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition"
+        style={{ background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.35)" }}
         disabled={pending}
         onClick={() =>
           start(async () => {
@@ -54,9 +56,9 @@ export function PanicButton({ pausado, dono }: { pausado: boolean; dono: boolean
           })
         }
       >
-        ⛔ Parar tudo
+        <Icon name="stop" size={16} /> Parar tudo
       </button>
-      {msg && <div className="text-xs muted">{msg}</div>}
+      {msg && <div className="text-xs" style={{ color: "var(--side-ink)" }}>{msg}</div>}
     </div>
   );
 }
@@ -64,7 +66,34 @@ export function PanicButton({ pausado, dono }: { pausado: boolean; dono: boolean
 // ------------------------------------------------------------------ chat
 type Linha = { autor: "user" | "assistant"; texto: string };
 
-export function Chat({ inicial }: { inicial: Linha[] }) {
+const SUGESTOES = [
+  { icon: "mail", texto: "Resume meus e-mails importantes de hoje" },
+  { icon: "calendar", texto: "Como está minha agenda amanhã?" },
+  { icon: "clock", texto: "Acha um horário livre de 1h nesta semana" },
+  { icon: "chart", texto: "Como foram as campanhas da Meta nos últimos 7 dias?" },
+];
+
+/** Formata *negrito* (estilo WhatsApp) e **negrito** (markdown) nas respostas. */
+function Rico({ texto }: { texto: string }) {
+  const partes = texto.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/g);
+  return (
+    <>
+      {partes.map((p, i) =>
+        /^\*\*[^*]+\*\*$/.test(p) ? <b key={i}>{p.slice(2, -2)}</b> : /^\*[^*\n]+\*$/.test(p) ? <b key={i}>{p.slice(1, -1)}</b> : <span key={i}>{p}</span>,
+      )}
+    </>
+  );
+}
+
+function Orb({ thinking = false, size = 32 }: { thinking?: boolean; size?: number }) {
+  return (
+    <div className={`orb rounded-full shrink-0 grid place-items-center ${thinking ? "thinking" : ""}`} style={{ width: size, height: size }}>
+      <img src="/logo.svg" alt="" width={size * 0.62} height={size * 0.62} style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,.2))", borderRadius: 6 }} />
+    </div>
+  );
+}
+
+export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
   const [linhas, setLinhas] = useState<Linha[]>(inicial);
   const [texto, setTexto] = useState("");
   const [pending, start] = useTransition();
@@ -79,12 +108,12 @@ export function Chat({ inicial }: { inicial: Linha[] }) {
     return () => clearInterval(t);
   }, [pending]);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth" });
-  }, [linhas]);
+    end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [linhas, passos]);
 
-  const enviar = () => {
-    const t = texto.trim();
-    if (!t) return;
+  const enviar = (valor?: string) => {
+    const t = (valor ?? texto).trim();
+    if (!t || pending) return;
     setTexto("");
     setLinhas((l) => [...l, { autor: "user", texto: t }]);
     start(async () => {
@@ -94,39 +123,95 @@ export function Chat({ inicial }: { inicial: Linha[] }) {
   };
 
   return (
-    <div className="card flex flex-col h-[28rem]">
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-        {linhas.length === 0 && <p className="muted text-sm">Fale com o Jarvis. Ex.: “resume meus e-mails de hoje”, “como foram as campanhas da semana?”</p>}
-        {linhas.map((l, i) => (
-          <div key={i} className={`flex ${l.autor === "user" ? "justify-end" : ""}`}>
-            <div
-              className="rounded-lg px-3 py-2 text-sm whitespace-pre-wrap max-w-[85%]"
-              style={l.autor === "user" ? { background: "var(--accent)", color: "white" } : { background: "var(--bg)" }}
-            >
-              {l.texto}
+    <div className="card !p-0 flex flex-col h-[34rem] overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b" style={{ borderColor: "var(--line)" }}>
+        <Orb thinking={pending} size={34} />
+        <div className="flex-1">
+          <div className="font-semibold text-sm">Jarvis</div>
+          <div className="text-xs muted flex items-center gap-1.5">
+            <span className="dot" style={{ background: pending ? "#f59e0b" : "#10b981" }} />
+            {pending ? (passos.length ? "trabalhando…" : "pensando…") : "pronto"}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {linhas.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-6">
+            <Orb size={56} />
+            <div>
+              <div className="font-semibold">Como posso ajudar{nome ? `, ${nome}` : ""}?</div>
+              <div className="muted text-sm">Peça qualquer coisa: e-mails, agenda, campanhas, lembretes…</div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2 w-full max-w-lg">
+              {SUGESTOES.map((s) => (
+                <button key={s.texto} className="chip flex items-center gap-2" onClick={() => enviar(s.texto)}>
+                  <span style={{ color: "var(--accent)" }}>
+                    <Icon name={s.icon} size={16} />
+                  </span>
+                  {s.texto}
+                </button>
+              ))}
             </div>
           </div>
-        ))}
+        )}
+        {linhas.map((l, i) =>
+          l.autor === "user" ? (
+            <div key={i} className="flex justify-end">
+              <div className="bubble-user px-4 py-2.5 text-sm whitespace-pre-wrap max-w-[80%]">{l.texto}</div>
+            </div>
+          ) : (
+            <div key={i} className="flex gap-2.5 items-end">
+              <Orb size={26} />
+              <div className="bubble-bot px-4 py-2.5 text-sm whitespace-pre-wrap max-w-[80%] leading-relaxed">
+                <Rico texto={l.texto} />
+              </div>
+            </div>
+          ),
+        )}
         {pending && (
-          <div className="muted text-sm space-y-0.5">
-            {passos.map((p, i) => (
-              <div key={i}>{p}</div>
-            ))}
-            <div>Jarvis está {passos.length ? "trabalhando" : "pensando"}…</div>
+          <div className="flex gap-2.5 items-end">
+            <Orb size={26} thinking />
+            <div className="bubble-bot px-4 py-2.5 text-sm space-y-1">
+              {passos.map((p, i) => (
+                <div key={i} className="muted text-xs">
+                  {p}
+                </div>
+              ))}
+              <div className="flex gap-1 py-1">
+                <span className="dot animate-bounce" style={{ background: "var(--muted)" }} />
+                <span className="dot animate-bounce [animation-delay:150ms]" style={{ background: "var(--muted)" }} />
+                <span className="dot animate-bounce [animation-delay:300ms]" style={{ background: "var(--muted)" }} />
+              </div>
+            </div>
           </div>
         )}
         <div ref={end} />
       </div>
+
       <form
-        className="flex gap-2 pt-3"
+        className="flex gap-2 items-end p-3 border-t"
+        style={{ borderColor: "var(--line)" }}
         onSubmit={(e) => {
           e.preventDefault();
           enviar();
         }}
       >
-        <input className="input" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva um pedido…" disabled={pending} />
-        <button className="btn" disabled={pending || !texto.trim()}>
-          Enviar
+        <textarea
+          className="input resize-none"
+          rows={1}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              enviar();
+            }
+          }}
+          placeholder="Escreva um pedido… (Enter envia, Shift+Enter quebra linha)"
+        />
+        <button className="btn !px-3 h-[38px]" disabled={pending || !texto.trim()} title="Enviar">
+          <Icon name="send" size={16} />
         </button>
       </form>
     </div>

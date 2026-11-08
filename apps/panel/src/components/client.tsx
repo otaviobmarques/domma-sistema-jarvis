@@ -67,7 +67,9 @@ export function Chat({ inicial }: { inicial: Linha[] }) {
   const [texto, setTexto] = useState("");
   const [pending, start] = useTransition();
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth" }), [linhas]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth" });
+  }, [linhas]);
 
   const enviar = () => {
     const t = texto.trim();

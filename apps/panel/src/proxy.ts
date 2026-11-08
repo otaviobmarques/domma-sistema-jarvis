@@ -16,7 +16,8 @@ export async function proxy(req: NextRequest) {
   });
   const { data } = await sb.auth.getUser();
   const path = req.nextUrl.pathname;
-  if (!data.user && !path.startsWith("/login")) {
+  const publica = ["/login", "/privacidade", "/termos"].some((p) => path.startsWith(p));
+  if (!data.user && !publica) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

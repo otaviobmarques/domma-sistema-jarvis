@@ -330,3 +330,19 @@ export async function whatsappTeste(): Promise<Result> {
     return fail(e);
   }
 }
+
+// ------------------------------------------------------------------ dispositivos (Fase 2)
+export async function gerarCodigoPareamento(): Promise<{ codigo?: string; expira_em?: string; erro?: string }> {
+  const u = await requireUser(["dono", "gestor", "operador"]);
+  try {
+    return await brain("/api/devices/pair-code", u.id, { method: "POST" });
+  } catch (e) {
+    return { erro: (e as Error).message };
+  }
+}
+
+export async function revogarDispositivo(id: string) {
+  const u = await requireUser();
+  await brain(`/api/devices/${id}/revoke`, u.id, { method: "POST" });
+  revalidatePath("/dispositivos");
+}

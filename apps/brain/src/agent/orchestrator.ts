@@ -26,6 +26,8 @@ export interface RunInput {
   notify?: (t: string) => Promise<void>;
   /** Para rotinas: não reaproveita a conversa anterior */
   novaConversa?: boolean;
+  /** App de PC que fez o pedido */
+  deviceId?: string | null;
 }
 
 export interface RunResult {
@@ -130,7 +132,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   const taskId = task!.id;
 
   const ac = track(user.id);
-  const ctx: ToolContext = { user, taskId, canal, signal: ac.signal, notify: input.notify ?? (async () => {}) };
+  const ctx: ToolContext = { user, taskId, canal, signal: ac.signal, notify: input.notify ?? (async () => {}), deviceId: input.deviceId ?? null };
 
   // Ferramentas que o perfil pode usar (as negadas nem aparecem para o modelo)
   const tools = ALL_TOOLS.filter((t) => t.perfis.includes(user.perfil));
@@ -257,7 +259,7 @@ async function executeTool(
   tu: Anthropic.Beta.BetaToolUseBlock,
   ctx: ToolContext,
   onPending: (p: { id: string; nivel: "confirmar" | "pin" | "pin_voz"; resumo: string }) => void,
-): Promise<{ content: string; isError: boolean }> {
+): Promise<{ content: string | Anthropic.Beta.BetaToolResultBlockParam["content"]; isError: boolean }> {
   const sql = db();
   const tool = TOOLS_BY_NAME.get(tu.name);
   const started = Date.now();
@@ -301,8 +303,20 @@ async function executeTool(
   }
   try {
     const out = await tool.run(parsed.data, ctx);
-    await record(out);
-    return { content: out, isError: false };
+    if (typeof out === "string") {
+      await record(out);
+      return { content: out, isError: false };
+    }
+    await record(out.texto + (out.imagem ? " [imagem]" : ""));
+    return {
+      content: out.imagem
+        ? [
+            { type: "text", text: out.texto },
+            { type: "image", source: { type: "base64", media_type: out.imagem.media_type, data: out.imagem.data } },
+          ]
+        : out.texto,
+      isError: false,
+    };
   } catch (err) {
     const msg = (err as Error).message ?? String(err);
     await record("", msg);

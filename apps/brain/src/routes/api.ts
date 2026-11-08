@@ -15,6 +15,7 @@ import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } fro
 import { applyGoogle, applyKey } from "../lib/keys.js";
 import { log } from "../lib/log.js";
 import { userById } from "../lib/users.js";
+import { criarCodigoPareamento, isOnline, revogar } from "../lib/devices.js";
 import { reloadRoutines, runRoutine } from "../scheduler.js";
 
 declare module "fastify" {
@@ -108,6 +109,22 @@ export async function registerRoutes(app: FastifyInstance) {
   // ------------------------------------------------------------- API do painel
   app.register(async (api) => {
     api.addHook("preHandler", auth);
+
+    api.post("/api/devices/pair-code", async (req) => {
+      const u = needUser(req);
+      return criarCodigoPareamento(u.id);
+    });
+    api.get("/api/devices", async (req) => {
+      const u = needUser(req);
+      const rows = await db()<{ id: string; tipo: string; nome: string; status: string; ultimo_contato: Date | null; info: unknown }[]>`
+        select id, tipo, nome, status, ultimo_contato, info from devices where user_id = ${u.id} and ativo order by criado_em`;
+      return rows.map((r) => ({ ...r, online: isOnline(r.id) }));
+    });
+    api.post("/api/devices/:id/revoke", async (req) => {
+      const u = needUser(req);
+      await revogar((req.params as { id: string }).id, u.id);
+      return { ok: true };
+    });
 
     api.post("/api/transcribe", async (req) => {
       needUser(req);

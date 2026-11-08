@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
   experimental: { serverActions: { bodySizeLimit: "12mb" } },
   // O fluxo OAuth do Google é tratado pelo cérebro, mas fica no mesmo domínio do painel.
   async rewrites() {
-    return [{ source: "/oauth/:path*", destination: `${brain}/oauth/:path*` }];
+    return [
+      { source: "/oauth/:path*", destination: `${brain}/oauth/:path*` },
+      // API do app de PC (pareamento, long-polling, voz)
+      { source: "/device/:path*", destination: `${brain}/device/:path*` },
+    ];
   },
   async headers() {
     return [

@@ -102,7 +102,8 @@ export async function execute(id: string, user: User, canal: Canal): Promise<str
   const ac = track(user.id);
   const started = Date.now();
   try {
-    const out = await tool.run(parsed.data, { user, taskId: a.task_id, canal, signal: ac.signal, notify: async () => {} });
+    const raw = await tool.run(parsed.data, { user, taskId: a.task_id, canal, signal: ac.signal, notify: async () => {} });
+    const out = typeof raw === "string" ? raw : raw.texto;
     await sql`update approvals set status = 'executada', resultado = ${out} where id = ${id}`;
     await sql`insert into task_steps (task_id, ferramenta, entrada, saida, duracao_ms) values (${a.task_id}, ${a.ferramenta + " (aprovado)"}, ${json(a.entrada)}, ${out}, ${Date.now() - started})`;
     await sql`update tasks set status = 'concluida', fim = now() where id = ${a.task_id}`;

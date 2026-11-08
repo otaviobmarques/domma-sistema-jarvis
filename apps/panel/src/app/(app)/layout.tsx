@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { PanicButton } from "@/components/PanicButton";
+import { ByDomma } from "@/components/brand";
 import { Icon } from "@/components/icons";
 import { NavLinks, type NavItem } from "@/components/nav";
 import { requireUser } from "@/lib/auth";
@@ -45,14 +46,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         className="md:w-64 md:h-screen md:sticky md:top-0 flex flex-col gap-5 p-4 md:p-5 text-white"
         style={{ background: "linear-gradient(180deg, var(--side) 0%, var(--side-2) 100%)" }}
       >
-        <div className="flex items-center gap-3 px-1">
-          <img src="/logo.svg" alt="" width={36} height={36} className="rounded-lg" />
-          <div>
-            <div className="text-lg font-bold leading-tight tracking-tight">Jarvis</div>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: "var(--side-ink)", opacity: 0.7 }}>
-              Domma Tecnologia
+        <div className="px-1 space-y-1.5">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="" width={36} height={36} className="rounded-lg" />
+            <div className="text-xl font-bold leading-tight tracking-tight" style={{ fontFamily: "var(--font-brand), sans-serif" }}>
+              Jarvis
             </div>
           </div>
+          <ByDomma dark />
         </div>
 
         <div className="flex-1 space-y-5 md:overflow-y-auto">
@@ -69,7 +70,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="space-y-3">
           <PanicButton pausado={user.pausado} dono={user.perfil === "dono"} />
           <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: "rgba(255,255,255,0.05)" }}>
-            <div className="w-9 h-9 rounded-full grid place-items-center text-sm font-semibold" style={{ background: "linear-gradient(135deg,#3b82f6,#1e3a5f)" }}>
+            <div className="w-9 h-9 rounded-full grid place-items-center text-sm font-semibold" style={{ background: "linear-gradient(135deg,#8172ff,#1c1337)" }}>
               {iniciais || "?"}
             </div>
             <div className="min-w-0 flex-1">

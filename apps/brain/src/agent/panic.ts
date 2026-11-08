@@ -1,4 +1,5 @@
 import { audit, db } from "../lib/db.js";
+import { cancelarFila } from "../lib/devices.js";
 
 /** Tarefas em execução por usuário, para o botão de pânico interromper na hora. */
 const running = new Map<string, Set<AbortController>>();
@@ -45,6 +46,8 @@ export async function panic(userId: string, opts: { global?: boolean; pausar?: b
   await sql`update tasks set status = 'cancelada', fim = now() where user_id in ${sql(users)} and status in ('executando','aguardando_aprovacao')`;
   await sql`update task_queue set status = 'cancelada' where status in ('pendente','entregue','executando')
             and task_id in (select id from tasks where user_id in ${sql(users)})`;
+  const devs = await sql<{ id: string }[]>`select id from devices where user_id in ${sql(users)} and ativo`;
+  cancelarFila(devs.map((d) => d.id));
   if (opts.pausar) await sql`update users set pausado = true where id in ${sql(users)}`;
   await audit(userId, "panico", opts.global ? "tenant" : "usuario", null, { aborted, pausar: !!opts.pausar });
   return aborted;

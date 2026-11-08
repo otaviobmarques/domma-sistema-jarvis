@@ -8,6 +8,7 @@ import {
   aprovar,
   chat,
   definirPin,
+  gerarCodigoPareamento,
   googleLink,
   panico,
   progresso,
@@ -579,5 +580,38 @@ export function ActionButton({ action, label, confirmText, className = "btn btn-
     <button className={className} disabled={pending} onClick={() => start(async () => void ((!confirmText || confirm(confirmText)) && (await action())))}>
       {label}
     </button>
+  );
+}
+
+// ------------------------------------------------------------------ pareamento do PC
+export function ParearPc() {
+  const [cod, setCod] = useState<{ codigo?: string; expira_em?: string; erro?: string } | null>(null);
+  const [resta, setResta] = useState(0);
+  const [pending, start] = useTransition();
+  useEffect(() => {
+    if (!cod?.expira_em) return;
+    const fim = new Date(cod.expira_em).getTime();
+    const t = setInterval(() => setResta(Math.max(0, Math.round((fim - Date.now()) / 1000))), 1000);
+    return () => clearInterval(t);
+  }, [cod]);
+  return (
+    <div className="space-y-3">
+      {cod?.codigo && resta > 0 ? (
+        <div className="rounded-xl p-4 text-center space-y-1" style={{ background: "var(--accent-soft)" }}>
+          <div className="muted text-xs">Digite este código no app do Jarvis no PC</div>
+          <div className="text-4xl font-bold tracking-[0.3em]" style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent)" }}>
+            {cod.codigo}
+          </div>
+          <div className="muted text-xs">
+            válido por {Math.floor(resta / 60)}:{String(resta % 60).padStart(2, "0")}
+          </div>
+        </div>
+      ) : (
+        <button className="btn" disabled={pending} onClick={() => start(async () => setCod(await gerarCodigoPareamento()))}>
+          <Icon name="devices" size={16} /> Gerar código de pareamento
+        </button>
+      )}
+      {cod?.erro && <p className="text-sm text-red-600">{cod.erro}</p>}
+    </div>
   );
 }

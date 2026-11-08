@@ -7,6 +7,7 @@ import { connectDb, db } from "./lib/db.js";
 import { log } from "./lib/log.js";
 import { hasStoredKey, loadStoredKeys } from "./lib/keys.js";
 import { registerRoutes } from "./routes/api.js";
+import { registerDeviceRoutes } from "./routes/device.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 
 async function main() {
@@ -20,6 +21,7 @@ async function main() {
   const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
   await app.register(cors, { origin: [config.panelUrl], credentials: true });
   await registerRoutes(app);
+  await registerDeviceRoutes(app);
   // "::" aceita IPv4 e IPv6 (a rede privada do Railway usa IPv6)
   await app.listen({ port: config.port, host: "::" });
   log.info({ port: config.port }, "cérebro do Jarvis no ar");

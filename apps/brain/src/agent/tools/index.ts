@@ -5,6 +5,7 @@ import * as data from "./data.js";
 import * as devices from "./devices.js";
 import * as google from "./google.js";
 import * as memory from "./memory.js";
+import * as pc from "./pc.js";
 import * as routines from "./routines.js";
 
 /** Ordem estável (importante para o cache de prompt). */
@@ -38,6 +39,14 @@ export const ALL_TOOLS: ToolDef[] = [
   routines.rotinaCriar,
   routines.rotinaListar,
   routines.rotinaAlterar,
+  pc.pcAbrir,
+  pc.pcArquivos,
+  pc.pcApagar,
+  pc.pcComando,
+  pc.pcJanelas,
+  pc.pcPrint,
+  pc.pcMouse,
+  pc.pcTeclado,
   devices.dispositivoExecutar,
 ] as ToolDef[];
 

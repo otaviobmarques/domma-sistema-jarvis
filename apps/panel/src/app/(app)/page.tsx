@@ -111,7 +111,7 @@ export default async function Inicio() {
                 </span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--line)" }}>
-                <div className="h-full rounded-full" style={{ width: `${(feitos / passos.length) * 100}%`, background: "linear-gradient(90deg,#3b82f6,#10b981)" }} />
+                <div className="h-full rounded-full" style={{ width: `${(feitos / passos.length) * 100}%`, background: "linear-gradient(90deg,#6f5cf6,#10b981)" }} />
               </div>
               <ul className="space-y-1.5">
                 {passos.map((p) => (

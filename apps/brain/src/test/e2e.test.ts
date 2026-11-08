@@ -170,6 +170,41 @@ describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definid
     assert.equal((await sql`select count(*)::int as n from routines where user_id = ${user.id}`)[0].n, 1);
   });
 
+  it("app de PC: pareia, recebe a ação por long-poll e devolve o resultado", async () => {
+    const devices = await import("../lib/devices.js");
+    const { codigo } = await devices.criarCodigoPareamento(user.id);
+    assert.equal(await devices.parear("ERRADO", "PC", "pc", {}), null);
+    const par = await devices.parear(codigo.toLowerCase(), "PC do teste", "pc", { os: "Windows 11" });
+    assert.ok(par?.token);
+    assert.equal(await devices.parear(codigo, "de novo", "pc", {}), null, "código é de uso único");
+    const dev = await devices.autenticar(par!.token);
+    assert.equal(dev?.user_id, user.id);
+    await devices.marcarVisto(dev!.id);
+
+    // o "app" fica em long-poll e responde a ação de abrir
+    const app = (async () => {
+      const a = await devices.proximaAcao(dev!.id, 5000);
+      assert.equal(a?.acao, "abrir");
+      await devices.receberResultado(dev!.id, a!.id, { ok: true, texto: `Abri ${String(a!.params.alvo)}.` });
+    })();
+
+    let call = 0;
+    script = (body) => {
+      if (body.max_tokens === 16) return msg([{ type: "text", text: "SIMPLES" }]);
+      if (body.output_config?.format) return msg([{ type: "text", text: JSON.stringify({ fatos: [] }) }]);
+      call++;
+      if (call === 1) return msg([{ type: "tool_use", id: "tu_pc", name: "pc_abrir", input: { alvo: "excel" } }], "tool_use");
+      const last = body.messages[body.messages.length - 1];
+      assert.match(last.content[0].content, /Abri excel/);
+      return msg([{ type: "text", text: "Pronto, abri o Excel." }]);
+    };
+    const r = await mods.orch.runTask({ user: { ...user, pausado: false }, canal: "voz", texto: "abre o excel", deviceId: dev!.id });
+    await app;
+    assert.equal(r.resposta, "Pronto, abri o Excel.");
+    await devices.revogar(dev!.id, user.id);
+    assert.equal(await devices.autenticar(par!.token), null, "token revogado não funciona");
+  });
+
   it("botão de pânico cancela pendências e pausa", async () => {
     const sql = mods.db.db();
     const [t] = await sql`insert into tasks (user_id, pedido, status) values (${user.id}, 'x', 'aguardando_aprovacao') returning id`;

@@ -31,6 +31,14 @@ export interface ToolContext {
   signal: AbortSignal;
   /** Envia uma mensagem intermediária ao usuário (ex.: "Entendi, fazendo..."). */
   notify: (text: string) => Promise<void>;
+  /** Dispositivo de onde veio o pedido (app de PC), preferido para ações locais. */
+  deviceId?: string | null;
+}
+
+/** Saída rica de ferramenta (ex.: print da tela para o modelo enxergar). */
+export interface ToolOutput {
+  texto: string;
+  imagem?: { media_type: "image/png" | "image/jpeg"; data: string };
 }
 
 export interface ToolDef<S extends z.ZodType = z.ZodType> {
@@ -49,7 +57,7 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
   resumo?: (input: z.infer<S>) => string;
   /** Disponível? (ex.: integração configurada). Se retornar string, é o motivo da indisponibilidade. */
   disponivel?: (user: User) => Promise<true | string>;
-  run: (input: z.infer<S>, ctx: ToolContext) => Promise<string>;
+  run: (input: z.infer<S>, ctx: ToolContext) => Promise<string | ToolOutput>;
 }
 
 export function defineTool<S extends z.ZodType>(t: ToolDef<S>): ToolDef<S> {

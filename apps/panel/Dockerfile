@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/brain/package.json apps/brain/
 COPY apps/panel/package.json apps/panel/
+COPY apps/pc/package.json apps/pc/
 RUN npm ci --workspace @jarvis/panel --include-workspace-root=false
 COPY apps/panel apps/panel
 ENV NEXT_TELEMETRY_DISABLED=1

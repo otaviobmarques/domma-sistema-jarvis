@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { handleApprovalReply } from "../agent/approvals.js";
 import { runTask } from "../agent/orchestrator.js";
+import { panic } from "../agent/panic.js";
 import { transcribe } from "../channels/stt.js";
 import { autenticar, marcarVisto, parear, proximaAcao, receberResultado } from "../lib/devices.js";
 import { userById } from "../lib/users.js";
@@ -62,6 +63,12 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
     dev.post("/device/transcribe", async (req) => {
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
       return { texto: await transcribe(Buffer.from(audio, "base64"), mime) };
+    });
+
+    // Botão de pânico do app (bandeja ou janela)
+    dev.post("/device/panic", async (req) => {
+      const n = await panic(req.device!.user_id, { pausar: true });
+      return { interrompidas: n };
     });
 
     // Pedido feito no PC (texto ou voz já transcrita)

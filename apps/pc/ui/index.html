@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jarvis by Domma Tecnologia</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Pareamento -->
+    <section id="tela-parear" class="tela" hidden>
+      <div class="marca">
+        <img src="logo.svg" alt="" width="56" height="56" />
+        <div>
+          <div class="nome">Jarvis</div>
+          <div class="by">by <b>Domma</b> <span>TECNOLOGIA</span></div>
+        </div>
+      </div>
+      <h1>Conectar este PC</h1>
+      <p class="muted">No painel do Jarvis, vá em <b>Dispositivos</b> → <b>Gerar código de pareamento</b> e digite o código abaixo.</p>
+      <form id="form-parear">
+        <label>Código
+          <input id="codigo" maxlength="8" autocomplete="off" spellcheck="false" placeholder="ABC123" required />
+        </label>
+        <label>Nome deste PC
+          <input id="nome-pc" maxlength="60" required />
+        </label>
+        <details>
+          <summary>Avançado</summary>
+          <label>Servidor
+            <input id="servidor" />
+          </label>
+        </details>
+        <button class="btn" id="btn-parear">Conectar</button>
+        <p id="erro-parear" class="erro"></p>
+      </form>
+    </section>
+
+    <!-- Assistente -->
+    <section id="tela-main" class="tela" hidden>
+      <header>
+        <div class="marca pequena">
+          <img src="logo.svg" alt="" width="28" height="28" />
+          <div>
+            <div class="nome">Jarvis</div>
+            <div class="by">by <b>Domma</b> <span>TECNOLOGIA</span></div>
+          </div>
+        </div>
+        <div class="acoes-topo">
+          <span id="status" class="status" title="Conexão com o Jarvis"><i></i><em>conectando…</em></span>
+          <button id="btn-config" class="icone" title="Configurações">⚙</button>
+        </div>
+      </header>
+
+      <div class="palco">
+        <div id="orb" class="orb"><div class="anel"></div><div class="nucleo"></div></div>
+        <div id="legenda" class="legenda">Diga ou escreva o que precisa.</div>
+        <div id="acao-atual" class="acao-atual" hidden></div>
+      </div>
+
+      <div id="conversa" class="conversa"></div>
+
+      <form id="form-chat" class="entrada">
+        <button type="button" id="btn-mic" class="mic" title="Falar (Ctrl+Shift+Espaço)">🎤</button>
+        <input id="texto" placeholder="Pedir ao Jarvis…  (Ctrl+Espaço)" autocomplete="off" />
+        <button class="btn enviar" title="Enviar">➤</button>
+      </form>
+      <div class="rodape">
+        <button id="btn-panico" class="panico" type="button">⛔ Parar tudo</button>
+        <span class="muted">Ctrl+Espaço abre · Ctrl+Shift+Espaço fala</span>
+      </div>
+    </section>
+
+    <!-- Configurações -->
+    <dialog id="dlg-config">
+      <h2>Configurações</h2>
+      <label class="check"><input type="checkbox" id="pref-falar" /> Responder falando</label>
+      <label class="check"><input type="checkbox" id="pref-privacidade" /> Modo privacidade (microfone desligado)</label>
+      <p class="muted" id="info-conta"></p>
+      <div class="linha">
+        <button class="btn sec" id="btn-desparear" type="button">Desconectar este PC</button>
+        <button class="btn" id="btn-fechar-config" type="button">Fechar</button>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

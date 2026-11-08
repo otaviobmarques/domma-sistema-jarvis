@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/brain/package.json apps/brain/
 COPY apps/panel/package.json apps/panel/
+COPY apps/pc/package.json apps/pc/
 RUN npm ci --workspace @jarvis/brain --include-workspace-root=false
 COPY apps/brain apps/brain
 RUN npm run build --workspace @jarvis/brain && npm prune --omit=dev --workspace @jarvis/brain

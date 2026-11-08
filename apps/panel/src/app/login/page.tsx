@@ -17,11 +17,14 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   return (
     <main className="min-h-screen grid place-items-center p-4">
       <form action={entrar} className="card w-full max-w-sm space-y-4">
-        <div>
+        <div className="flex items-center gap-3">
+          <img src="/logo.svg" alt="" width={44} height={44} />
+          <div>
           <div className="text-2xl font-bold" style={{ color: "var(--brand)" }}>
             Jarvis
           </div>
           <div className="muted text-sm">Domma Tecnologia</div>
+          </div>
         </div>
         <label className="block text-sm">
           Usuário ou e-mail
@@ -34,6 +37,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         {erro === "1" && <p className="text-sm text-red-600">Usuário ou senha incorretos.</p>}
         {erro === "2" && <p className="text-sm text-red-600">Seu acesso ainda não foi liberado no Jarvis. Fale com o administrador.</p>}
         <button className="btn w-full justify-center">Entrar</button>
+        <p className="text-xs muted text-center">
+          <a href="/privacidade" className="underline">Privacidade</a> · <a href="/termos" className="underline">Termos</a>
+        </p>
       </form>
     </main>
   );

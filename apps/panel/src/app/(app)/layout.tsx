@@ -29,10 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen md:flex">
       <aside className="md:w-60 md:min-h-screen border-b md:border-b-0 md:border-r p-4 space-y-4" style={{ borderColor: "var(--line)", background: "var(--card)" }}>
-        <div>
+        <div className="flex items-center gap-2">
+          <img src="/logo.svg" alt="" width={32} height={32} />
           <div className="text-xl font-bold" style={{ color: "var(--brand)" }}>
             Jarvis
           </div>
+        </div>
+        <div>
           <div className="muted text-xs">
             {user.nome} · {user.perfil}
           </div>

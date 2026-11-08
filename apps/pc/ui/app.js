@@ -13,6 +13,8 @@ function orb(modo, legenda) {
 }
 
 function addMsg(quem, texto) {
+  if (quem === "jarvis") $("legenda").textContent = texto.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1");
+  else $("legenda").textContent = "Você: " + texto;
   const d = document.createElement("div");
   d.className = "msg " + quem;
   d.textContent = texto.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1");
@@ -134,7 +136,6 @@ async function enviar(texto, voz = false) {
     const r = await invoke("conversar", { texto, voz });
     const resposta = r.resposta || "Feito.";
     addMsg("jarvis", resposta);
-    $("legenda").textContent = "";
     falar(resposta);
   } catch (e) {
     orb("erro", String(e));
@@ -259,6 +260,26 @@ $("btn-panico").addEventListener("click", async () => {
   }
 });
 
+// ------------------------------------------------------------------ histórico e nome do assistente
+$("btn-historico").addEventListener("click", () => {
+  $("conversa").hidden = !$("conversa").hidden;
+  $("btn-historico").textContent = $("conversa").hidden ? "Histórico" : "Fechar histórico";
+  $("conversa").scrollTop = $("conversa").scrollHeight;
+});
+function nomeAssistente() {
+  try {
+    return localStorage.getItem("nome-assistente") || "Tavinho";
+  } catch {
+    return "Tavinho";
+  }
+}
+function aplicarNome() {
+  const n = nomeAssistente();
+  $("nome-assistente").textContent = n.toUpperCase();
+  const primeiro = (estado.usuario || "").replace(/\(.*?\)/g, "").trim().split(/\s+/)[0];
+  $("texto").placeholder = primeiro ? `Como posso ajudar, ${primeiro}?` : "Como posso ajudar?";
+}
+
 // ------------------------------------------------------------------ pausado / retomar
 function mostrarPausado(p) {
   $("btn-retomar").hidden = !p;
@@ -333,12 +354,16 @@ $("form-parear").addEventListener("submit", async (e) => {
 
 // ------------------------------------------------------------------ configurações
 $("btn-config").addEventListener("click", () => {
+  $("pref-nome").value = nomeAssistente();
   $("pref-falar").checked = !!estado.falar_respostas;
   $("pref-privacidade").checked = !!estado.privacidade;
   $("info-conta").textContent = `${estado.nome} · ${estado.usuario || ""} · ${estado.servidor} · v${estado.versao}`;
   $("dlg-config").showModal();
 });
 $("btn-fechar-config").addEventListener("click", async () => {
+  try {
+    localStorage.setItem("nome-assistente", $("pref-nome").value.trim() || "Tavinho");
+  } catch {}
   await invoke("preferencias", { privacidade: $("pref-privacidade").checked, falarRespostas: $("pref-falar").checked });
   $("dlg-config").close();
   await carregar();
@@ -396,9 +421,10 @@ async function carregar() {
     $("nome-pc").value = estado.nome;
     $("codigo").focus();
   } else {
-    orb("", estado.privacidade ? "Modo privacidade: microfone desligado." : "Diga ou escreva o que precisa.");
+    orb("", estado.privacidade ? "Modo privacidade: microfone desligado." : "");
     $("btn-mic").disabled = !!estado.privacidade;
     $("texto").focus();
+    aplicarNome();
     verificarConta();
     verificarAtualizacao();
   }

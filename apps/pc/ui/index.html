@@ -37,50 +37,83 @@
     </section>
 
     <!-- Assistente -->
-    <section id="tela-main" class="tela" hidden>
-      <header>
+    <section id="tela-main" class="hud" hidden>
+      <!-- decoração -->
+      <svg class="deco deco-esq" viewBox="0 0 400 600" aria-hidden="true">
+        <path d="M120 120 A80 80 0 0 1 250 90" />
+        <path d="M0 260 H190 L250 320 H350" /><circle cx="352" cy="320" r="3" />
+        <path d="M0 390 H150 L210 330" />
+        <path d="M40 500 H270 L330 560" />
+      </svg>
+      <svg class="deco deco-dir" viewBox="0 0 400 600" aria-hidden="true">
+        <path d="M400 260 H210 L150 320 H50" /><circle cx="48" cy="320" r="3" />
+        <path d="M400 390 H250 L190 440 H110" /><circle cx="110" cy="440" r="3" />
+        <path d="M400 500 H130 L70 560" />
+        <g class="constelacao"><path d="M220 70 L285 110 L255 170 L330 150" /><circle cx="220" cy="70" r="3" /><circle cx="285" cy="110" r="3.5" /><circle cx="255" cy="170" r="3" /><circle cx="330" cy="150" r="3" /></g>
+        <circle class="radar" cx="210" cy="540" r="44" /><circle cx="210" cy="540" r="4" />
+      </svg>
+      <canvas id="onda" class="onda" width="300" height="90" aria-hidden="true"></canvas>
+
+      <!-- topo -->
+      <header class="hud-topo">
         <div class="marca pequena">
-          <img src="logo.svg" alt="" width="28" height="28" />
-          <div>
-            <div class="nome">Jarvis</div>
-            <div class="by">by <b>Domma</b> <span>TECNOLOGIA</span></div>
-          </div>
+          <img src="logo.svg" alt="" width="26" height="26" />
+          <div class="by">by <b>Domma</b> <span>TECNOLOGIA</span></div>
+        </div>
+        <div class="estados" id="estados">
+          <span data-m="">Aguardando</span><span data-m="ouvindo">Ouvindo</span><span data-m="falando">Falando</span><span data-m="pensando">Executando</span><span data-m="erro">Alerta</span>
         </div>
         <div class="acoes-topo">
-          <span id="status" class="status" title="Conexão com o Jarvis"><i></i><em>conectando…</em></span>
-          <button id="btn-cheia" class="icone" title="Modo Jarvis (tela cheia) — F11">⛶</button>
+          <span id="status" class="status" title="Conexão com o cérebro"><i></i><em>conectando…</em></span>
+          <button id="btn-cheia" class="icone" title="Tela cheia (F11)">⛶</button>
           <button id="btn-config" class="icone" title="Configurações">⚙</button>
         </div>
       </header>
 
+      <!-- núcleo -->
       <div class="palco">
-        <canvas id="tavinho" width="320" height="320" title="Clique duas vezes para tela cheia"></canvas>
-        <div id="legenda" class="legenda">Diga ou escreva o que precisa.</div>
+        <canvas id="tavinho" width="600" height="600" title="Clique duas vezes para tela cheia"></canvas>
+        <div class="centro">
+          <div class="nome-assistente" id="nome-assistente">TAVINHO</div>
+          <div class="subtitulo">ASSISTENTE PESSOAL</div>
+          <div class="estado-atual" id="estado-atual"><i></i><span>AGUARDANDO COMANDO</span></div>
+        </div>
+      </div>
+
+      <!-- fala / legenda -->
+      <div class="legenda-box">
+        <div id="legenda" class="legenda"></div>
         <div id="acao-atual" class="acao-atual" hidden></div>
-        <button id="btn-conversa" class="conversar" type="button" title="Ctrl+Shift+Espaço">🎙️ Conversar com o Jarvis</button>
       </div>
+      <div id="conversa" class="conversa" hidden></div>
 
-      <div id="conversa" class="conversa"></div>
-
-      <form id="form-chat" class="entrada">
-        <button type="button" id="btn-mic" class="mic" title="Gravar um áudio (clique para começar e para enviar)">🎤</button>
-        <input id="texto" placeholder="Pedir ao Jarvis…  (Ctrl+Espaço)" autocomplete="off" />
-        <button class="btn enviar" title="Enviar">➤</button>
-      </form>
-      <div id="faixa-atualizar" class="faixa" hidden>
-        <span>✨ Nova versão <b id="v-nova"></b> disponível</span>
-        <button id="btn-baixar" class="btn mini" type="button">Atualizar</button>
-      </div>
-      <div class="rodape">
-        <button id="btn-panico" class="panico" type="button">⛔ Parar tudo</button>
-        <button id="btn-retomar" class="btn mini" type="button" hidden>▶ Retomar</button>
-        <span class="muted">Ctrl+Espaço abre · Ctrl+Shift+Espaço conversa</span>
+      <!-- base -->
+      <div class="base">
+        <form id="form-chat" class="barra">
+          <button type="button" id="btn-mic" class="barra-mic" title="Gravar um áudio"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+          <span class="barra-sep"></span>
+          <input id="texto" placeholder="Como posso ajudar?" autocomplete="off" />
+          <button class="barra-enviar" title="Enviar">➤</button>
+        </form>
+        <div class="base-acoes">
+          <button id="btn-conversa" class="conversar" type="button" title="Ctrl+Shift+Espaço">🎙️ Conversar</button>
+          <button id="btn-historico" class="sec-hud" type="button">Histórico</button>
+          <button id="btn-panico" class="panico" type="button">⛔ Parar tudo</button>
+          <button id="btn-retomar" class="retomar" type="button" hidden>▶ Retomar</button>
+        </div>
+        <div id="faixa-atualizar" class="faixa" hidden>
+          <span>✨ Nova versão <b id="v-nova"></b> disponível</span>
+          <button id="btn-baixar" class="btn mini" type="button">Atualizar</button>
+        </div>
       </div>
     </section>
 
     <!-- Configurações -->
     <dialog id="dlg-config">
       <h2>Configurações</h2>
+      <label>Nome do assistente
+        <input id="pref-nome" maxlength="20" placeholder="Tavinho" />
+      </label>
       <label class="check"><input type="checkbox" id="pref-falar" /> Responder falando</label>
       <label class="check"><input type="checkbox" id="pref-privacidade" /> Modo privacidade (microfone desligado)</label>
       <p class="muted" id="info-conta"></p>

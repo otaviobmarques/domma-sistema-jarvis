@@ -152,8 +152,7 @@ fn nivel_mic(state: State<'_, AppState>) -> f32 {
 #[tauri::command]
 fn tela_cheia(app: AppHandle, ligar: bool) -> Result<(), String> {
     let w = app.get_webview_window("main").ok_or("janela")?;
-    w.set_fullscreen(ligar).map_err(|e| e.to_string())?;
-    w.set_always_on_top(!ligar).map_err(|e| e.to_string())
+    w.set_fullscreen(ligar).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

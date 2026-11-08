@@ -1,149 +1,207 @@
-// Tavinho — a "cara" animada do Jarvis. Canvas 2D, ~60 fps, cor por estado:
-// espera = roxo Domma · ouvindo = azul · pensando = violeta · falando = verde · erro = vermelho
+// Tavinho — HUD animado (protótipo "Tavinho · Assistente pessoal").
+// Cor por estado: aguardando = ciano · ouvindo = azul · falando = verde · executando = violeta · alerta = vermelho
 (function () {
   const CORES = {
-    "": [111, 92, 246],
+    "": [34, 211, 238],
     ouvindo: [59, 130, 246],
-    pensando: [168, 85, 247],
     falando: [16, 185, 129],
+    pensando: [167, 139, 250],
     erro: [239, 68, 68],
   };
+  const ROTULOS = { "": "AGUARDANDO COMANDO", ouvindo: "OUVINDO…", falando: "FALANDO", pensando: "EXECUTANDO", erro: "ALERTA" };
+  const VELOC = { "": 1, ouvindo: 1.6, falando: 1.8, pensando: 3.2, erro: 0.6 };
+
   const cv = document.getElementById("tavinho");
+  const onda = document.getElementById("onda");
   if (!cv) return;
   const ctx = cv.getContext("2d");
+  const octx = onda?.getContext("2d");
   let modo = "";
-  let cor = [...CORES[""]];
+  const cor = [...CORES[""]];
+  let vel = 1;
   let nivelAlvo = 0;
   let nivel = 0;
   let pulso = 0;
-  let energia = 0.25; // suaviza a transição de intensidade entre estados
-  const particulas = Array.from({ length: 42 }, (_, i) => ({
-    a: Math.random() * Math.PI * 2,
-    r: 0.62 + Math.random() * 0.3,
-    v: (0.15 + Math.random() * 0.35) * (i % 2 ? 1 : -1),
-    t: 0.6 + Math.random() * 1.6,
-  }));
-
-  function ajustarTamanho() {
-    const dpr = window.devicePixelRatio || 1;
-    const w = cv.clientWidth || 200;
-    if (cv.width !== Math.round(w * dpr)) {
-      cv.width = Math.round(w * dpr);
-      cv.height = Math.round(w * dpr);
-    }
-  }
+  let giro = 0;
+  let ultimo = 0;
+  const barras = Array.from({ length: 46 }, () => Math.random());
 
   const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
+  function ajustar(c) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(50, c.clientWidth);
+    const h = Math.max(20, c.clientHeight);
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+  }
+
+  function arco(cx, r, a0, a1, w, estilo, glow = 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cx, r, a0, a1);
+    ctx.strokeStyle = estilo;
+    ctx.lineWidth = w;
+    ctx.shadowColor = estilo;
+    ctx.shadowBlur = glow;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
   function quadro(ts) {
-    ajustarTamanho();
-    const t = ts / 1000;
+    const dt = Math.min(0.05, (ts - ultimo) / 1000 || 0.016);
+    ultimo = ts;
+    ajustar(cv);
     const W = cv.width;
     const c = W / 2;
-    const R = W * 0.22;
+    const t = ts / 1000;
 
-    // transições suaves
     const alvo = CORES[modo] || CORES[""];
     for (let i = 0; i < 3; i++) cor[i] += (alvo[i] - cor[i]) * 0.08;
-    const energiaAlvo = { "": 0.25, ouvindo: 0.7, pensando: 0.85, falando: 0.9, erro: 0.5 }[modo] ?? 0.25;
-    energia += (energiaAlvo - energia) * 0.05;
-    nivel += (nivelAlvo - nivel) * 0.35;
+    vel += ((VELOC[modo] ?? 1) - vel) * 0.05;
+    nivel += (nivelAlvo - nivel) * 0.3;
     pulso *= 0.9;
+    giro += dt * vel;
+    const forca = Math.min(1, nivel + pulso * 0.6);
 
     ctx.clearRect(0, 0, W, W);
+    ctx.lineCap = "round";
 
-    // brilho externo
-    const respiro = Math.sin(t * (1.2 + energia * 2.5)) * 0.5 + 0.5;
-    const brilho = ctx.createRadialGradient(c, c, R * 0.5, c, c, R * 2.3);
-    brilho.addColorStop(0, rgba(cor, 0.35 + energia * 0.25));
-    brilho.addColorStop(1, rgba(cor, 0));
-    ctx.fillStyle = brilho;
+    // brilho de fundo
+    const g = ctx.createRadialGradient(c, c, W * 0.1, c, c, W * 0.5);
+    g.addColorStop(0, rgba(cor, 0.16 + forca * 0.18));
+    g.addColorStop(1, rgba(cor, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, W);
+
+    // mira (linhas finas)
+    ctx.strokeStyle = rgba([34, 211, 238], 0.18);
+    ctx.lineWidth = Math.max(1, W * 0.0015);
     ctx.beginPath();
-    ctx.arc(c, c, R * 2.3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(c, 0);
+    ctx.lineTo(c, W * 0.2);
+    ctx.moveTo(c, W * 0.8);
+    ctx.lineTo(c, W);
+    ctx.moveTo(0, c);
+    ctx.lineTo(W * 0.2, c);
+    ctx.moveTo(W * 0.8, c);
+    ctx.lineTo(W, c);
+    ctx.stroke();
 
-    // onda de voz (ouvindo/falando)
-    if (modo === "ouvindo" || modo === "falando" || nivel > 0.02) {
+    // anel externo fino + segmentos grossos girando devagar
+    arco(c, W * 0.485, 0, Math.PI * 2, Math.max(1, W * 0.0015), rgba(cor, 0.22));
+    const segs = [
+      [0.15, 0.55, 0.012, 0.85],
+      [0.9, 1.25, 0.012, 0.45],
+      [1.6, 2.35, 0.006, 0.7],
+      [2.8, 3.05, 0.016, 0.35],
+      [3.5, 4.3, 0.006, 0.75],
+      [4.7, 5.0, 0.016, 0.35],
+      [5.4, 5.9, 0.008, 0.6],
+    ];
+    for (const [a0, a1, w, al] of segs) arco(c, W * 0.455, a0 + giro * 0.12, a1 + giro * 0.12, W * w, rgba(cor, al), W * 0.01);
+
+    // anel de marcações
+    const n = 120;
+    const rot = -giro * 0.05;
+    ctx.lineWidth = Math.max(1, W * 0.003);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rot;
+      const longo = i % 5 === 0;
+      const r1 = W * 0.405;
+      const r2 = r1 + W * (longo ? 0.03 : 0.018);
+      ctx.strokeStyle = rgba(cor, longo ? 0.75 : 0.4);
       ctx.beginPath();
-      const amp = R * (0.08 + nivel * 0.5 + pulso * 0.3);
-      for (let i = 0; i <= 120; i++) {
-        const a = (i / 120) * Math.PI * 2;
-        const ruido = Math.sin(a * 6 + t * 6) * 0.5 + Math.sin(a * 11 - t * 9) * 0.3 + Math.sin(a * 3 + t * 2) * 0.2;
-        const rr = R * 1.32 + ruido * amp;
-        const x = c + Math.cos(a) * rr;
-        const y = c + Math.sin(a) * rr;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      }
-      ctx.closePath();
-      ctx.strokeStyle = rgba(cor, 0.75);
-      ctx.lineWidth = W * 0.008;
+      ctx.moveTo(c + Math.cos(a) * r1, c + Math.sin(a) * r1);
+      ctx.lineTo(c + Math.cos(a) * r2, c + Math.sin(a) * r2);
       ctx.stroke();
     }
 
-    // anéis girando
-    const aneis = [
-      { r: 1.55, v: 0.35, l: 1.2, w: 0.006, a: 0.55 },
-      { r: 1.75, v: -0.22, l: 0.8, w: 0.004, a: 0.4 },
-      { r: 1.95, v: 0.15, l: 1.7, w: 0.003, a: 0.25 },
-    ];
-    for (const an of aneis) {
-      const giro = t * an.v * (1 + energia * 2.5);
-      for (let k = 0; k < 3; k++) {
-        ctx.beginPath();
-        ctx.arc(c, c, R * an.r, giro + (k * Math.PI * 2) / 3, giro + (k * Math.PI * 2) / 3 + an.l);
-        ctx.strokeStyle = rgba(cor, an.a * (0.6 + energia * 0.6));
-        ctx.lineWidth = W * an.w;
-        ctx.lineCap = "round";
-        ctx.stroke();
-      }
-    }
+    // anel tracejado (gira ao contrário)
+    ctx.save();
+    ctx.setLineDash([W * 0.012, W * 0.012]);
+    arco(c, W * 0.385, giro * -0.2, giro * -0.2 + Math.PI * 2, Math.max(1, W * 0.002), rgba(cor, 0.45));
+    ctx.restore();
 
-    // partículas em órbita
-    for (const p of particulas) {
-      p.a += p.v * 0.01 * (1 + energia * 3);
-      const rr = R * (1.4 + p.r * 0.9) + Math.sin(t * p.t + p.a) * R * 0.05;
-      const x = c + Math.cos(p.a) * rr;
-      const y = c + Math.sin(p.a) * rr;
+    // arcos brilhantes (reagem à voz)
+    const rb = W * (0.345 + forca * 0.02);
+    const brilhantes = [
+      [-1.2, -0.3],
+      [0.35, 1.0],
+      [1.7, 2.5],
+      [3.1, 3.5],
+      [4.0, 4.9],
+    ];
+    for (const [a0, a1] of brilhantes) arco(c, rb, a0 + giro * 0.35, a1 + giro * 0.35, W * (0.009 + forca * 0.006), rgba(cor, 0.95), W * 0.03);
+
+    // anel pontilhado violeta
+    const pts = 72;
+    for (let i = 0; i < pts; i++) {
+      const a = (i / pts) * Math.PI * 2 + giro * 0.08;
+      const r = W * 0.305;
       ctx.beginPath();
-      ctx.arc(x, y, W * 0.004 * (0.6 + p.r), 0, Math.PI * 2);
-      ctx.fillStyle = rgba(cor, 0.35 + 0.4 * Math.sin(t * p.t + p.a) ** 2);
+      ctx.arc(c + Math.cos(a) * r, c + Math.sin(a) * r, W * 0.0035, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(139,92,246,${0.45 + 0.35 * Math.sin(t * 2 + i)})`;
       ctx.fill();
     }
 
-    // núcleo
-    const escala = 1 + respiro * 0.04 * (1 + energia) + nivel * 0.18 + pulso * 0.08;
-    const rn = R * escala;
-    const g = ctx.createRadialGradient(c - rn * 0.35, c - rn * 0.4, rn * 0.05, c, c, rn);
-    g.addColorStop(0, "rgba(255,255,255,0.95)");
-    g.addColorStop(0.35, rgba(cor.map((x) => Math.min(255, x + 60)), 1));
-    g.addColorStop(0.8, rgba(cor, 1));
-    g.addColorStop(1, "rgba(28,19,55,1)");
-    ctx.fillStyle = g;
+    // disco central
+    const rd = W * (0.27 + forca * 0.012 + Math.sin(t * 1.4) * 0.003);
+    const gd = ctx.createRadialGradient(c, c, rd * 0.2, c, c, rd);
+    gd.addColorStop(0, "rgba(14,52,78,0.95)");
+    gd.addColorStop(1, "rgba(8,30,48,0.95)");
+    ctx.fillStyle = gd;
     ctx.beginPath();
-    ctx.arc(c, c, rn, 0, Math.PI * 2);
+    ctx.arc(c, c, rd, 0, Math.PI * 2);
     ctx.fill();
+    arco(c, rd, 0, Math.PI * 2, Math.max(1, W * 0.003), rgba(cor, 0.7 + forca * 0.3), W * 0.02);
 
-    // reflexo interno girando (pensando gira mais rápido)
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(c, c, rn, 0, Math.PI * 2);
-    ctx.clip();
-    const ang = t * (0.6 + energia * 2.2);
-    const lg = ctx.createLinearGradient(c + Math.cos(ang) * rn, c + Math.sin(ang) * rn, c - Math.cos(ang) * rn, c - Math.sin(ang) * rn);
-    lg.addColorStop(0, "rgba(255,255,255,0.18)");
-    lg.addColorStop(0.5, "rgba(255,255,255,0)");
-    lg.addColorStop(1, "rgba(0,0,0,0.25)");
-    ctx.fillStyle = lg;
-    ctx.fillRect(c - rn, c - rn, rn * 2, rn * 2);
-    ctx.restore();
+    // marcas em cruz no disco
+    ctx.strokeStyle = rgba(cor, 0.5);
+    ctx.lineWidth = Math.max(1, W * 0.002);
+    for (const a of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+      ctx.beginPath();
+      ctx.moveTo(c + Math.cos(a) * rd, c + Math.sin(a) * rd);
+      ctx.lineTo(c + Math.cos(a) * (rd + W * 0.04), c + Math.sin(a) * (rd + W * 0.04));
+      ctx.stroke();
+    }
+
+    // onda lateral
+    if (octx && onda.offsetParent !== null) {
+      ajustar(onda);
+      const OW = onda.width;
+      const OH = onda.height;
+      octx.clearRect(0, 0, OW, OH);
+      const nb = barras.length;
+      const bw = OW / nb;
+      for (let i = 0; i < nb; i++) {
+        const env = Math.sin((i / (nb - 1)) * Math.PI);
+        barras[i] += (Math.random() - barras[i]) * 0.12;
+        const ativo = 0.12 + forca * 0.9;
+        const h = OH * (0.08 + env * ativo * (0.4 + barras[i] * 0.6));
+        octx.fillStyle = rgba(cor, 0.35 + env * 0.5);
+        octx.fillRect(i * bw + bw * 0.2, (OH - h) / 2, bw * 0.55, h);
+      }
+    }
 
     requestAnimationFrame(quadro);
   }
   requestAnimationFrame(quadro);
 
+  function estado(m) {
+    modo = m in CORES ? m : "";
+    const hud = document.getElementById("tela-main");
+    if (hud) hud.className = "hud" + (modo ? " m-" + modo : "") + (hud.hidden ? "" : "");
+    const rotulo = document.querySelector("#estado-atual span");
+    if (rotulo) rotulo.textContent = ROTULOS[modo];
+    for (const el of document.querySelectorAll("#estados span")) el.classList.toggle("on", el.dataset.m === modo);
+  }
+  estado("");
+
   window.Tavinho = {
-    estado: (m) => (modo = m in CORES ? m : ""),
-    nivel: (n) => (nivelAlvo = Math.max(0, Math.min(1, Number(n) || 0))),
+    estado,
+    nivel: (v) => (nivelAlvo = Math.max(0, Math.min(1, Number(v) || 0))),
     pulso: () => (pulso = 1),
   };
 })();

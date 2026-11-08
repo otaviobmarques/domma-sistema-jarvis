@@ -137,6 +137,22 @@ impl Api {
         res.json().await.map_err(|e| e.to_string())
     }
 
+    pub async fn get(&self, caminho: &str) -> Result<Value, String> {
+        let res = self.auth(self.http.get(self.url(caminho))).send().await.map_err(|e| e.to_string())?;
+        if !res.status().is_success() {
+            return Err(erro_de(res).await);
+        }
+        res.json().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn post(&self, caminho: &str, corpo: Value) -> Result<Value, String> {
+        let res = self.auth(self.http.post(self.url(caminho))).json(&corpo).send().await.map_err(|e| e.to_string())?;
+        if !res.status().is_success() {
+            return Err(erro_de(res).await);
+        }
+        res.json().await.map_err(|e| e.to_string())
+    }
+
     pub async fn panico(&self) -> Result<(), String> {
         let res = self.auth(self.http.post(self.url("/device/panic"))).json(&json!({})).send().await.map_err(|e| e.to_string())?;
         if !res.status().is_success() {

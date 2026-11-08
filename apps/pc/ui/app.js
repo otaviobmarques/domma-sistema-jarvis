@@ -26,29 +26,100 @@ function vozPtBr() {
   return vozes.find((v) => v.lang === "pt-BR" && /Francisca|Antonio|Thalita|Natural/i.test(v.name)) || vozes.find((v) => v.lang.startsWith("pt"));
 }
 function voltarAOuvir() {
+  window.Tavinho?.nivel(0);
   if (emConversa) {
     invoke("conversa_modo", { modo: "ouvindo" });
     orb("ouvindo", "Pode falar…");
   } else orb("", "Pronto.");
 }
-function falar(texto) {
-  // no Modo Conversa a resposta é sempre falada
-  if ((!estado.falar_respostas && !emConversa) || !("speechSynthesis" in window)) return voltarAOuvir();
-  const limpo = texto.replace(/\*+/g, "").replace(/https?:\/\/\S+/g, "link").replace(/[#_`>|]/g, "").slice(0, 1200);
-  const u = new SpeechSynthesisUtterance(limpo);
-  u.lang = "pt-BR";
-  const v = vozPtBr();
-  if (v) u.voice = v;
-  u.rate = 1.05;
-  u.onstart = () => {
-    orb("falando");
-    if (emConversa) invoke("conversa_modo", { modo: "falando" });
-  };
-  u.onboundary = () => window.Tavinho?.pulso();
-  u.onend = () => voltarAOuvir();
-  u.onerror = () => voltarAOuvir();
+// Voz natural (ElevenLabs, pelo cérebro), frase a frase para começar a falar logo.
+// Sem voz natural configurada, usa a voz do Windows.
+let audioAtual = null;
+let filaFala = 0; // muda a cada nova fala para cancelar a anterior
+let ctxAudio = null;
+function pararFala() {
+  filaFala++;
   speechSynthesis.cancel();
-  speechSynthesis.speak(u);
+  if (audioAtual) {
+    audioAtual.pause();
+    audioAtual = null;
+  }
+}
+function frases(texto) {
+  const limpo = texto.replace(/\*+/g, "").replace(/https?:\/\/\S+/g, "o link").replace(/[#_`>|]/g, "");
+  const partes = limpo.match(/[^.!?\n]+[.!?]*\s*/g) || [limpo];
+  const out = [];
+  let atual = "";
+  for (const p of partes) {
+    atual += p;
+    if (atual.length > (out.length ? 220 : 90)) {
+      out.push(atual.trim());
+      atual = "";
+    }
+  }
+  if (atual.trim()) out.push(atual.trim());
+  return out.slice(0, 12);
+}
+function tocar(b64, mime, id) {
+  return new Promise((resolve) => {
+    if (id !== filaFala) return resolve();
+    const a = new Audio(`data:${mime};base64,${b64}`);
+    audioAtual = a;
+    try {
+      ctxAudio = ctxAudio || new AudioContext();
+      const src = ctxAudio.createMediaElementSource(a);
+      const an = ctxAudio.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      an.connect(ctxAudio.destination);
+      const dados = new Uint8Array(an.fftSize);
+      const medir = () => {
+        if (audioAtual !== a) return window.Tavinho?.nivel(0);
+        an.getByteTimeDomainData(dados);
+        let soma = 0;
+        for (const v of dados) soma += ((v - 128) / 128) ** 2;
+        window.Tavinho?.nivel(Math.min(1, Math.sqrt(soma / dados.length) * 4));
+        requestAnimationFrame(medir);
+      };
+      requestAnimationFrame(medir);
+    } catch {}
+    a.onended = a.onerror = () => resolve();
+    a.play().catch(() => resolve());
+  });
+}
+function falarWindows(texto, id) {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window) || id !== filaFala) return resolve();
+    const u = new SpeechSynthesisUtterance(texto.replace(/\*+/g, "").slice(0, 1200));
+    u.lang = "pt-BR";
+    const v = vozPtBr();
+    if (v) u.voice = v;
+    u.rate = 1.05;
+    u.onboundary = () => window.Tavinho?.pulso();
+    u.onend = u.onerror = () => resolve();
+    speechSynthesis.speak(u);
+  });
+}
+async function falar(texto) {
+  if (!estado.falar_respostas && !emConversa) return voltarAOuvir();
+  pararFala();
+  const id = filaFala;
+  orb("falando");
+  if (emConversa) invoke("conversa_modo", { modo: "falando" });
+  const lista = frases(texto);
+  let proxima = invoke("sintetizar", { texto: lista[0] }).catch(() => null);
+  for (let i = 0; i < lista.length; i++) {
+    const r = await proxima;
+    if (id !== filaFala) return;
+    if (i + 1 < lista.length) proxima = invoke("sintetizar", { texto: lista[i + 1] }).catch(() => null);
+    if (r && r.audio) await tocar(r.audio, r.mime || "audio/mpeg", id);
+    else await falarWindows(lista[i], id);
+  }
+  if (id === filaFala) {
+    audioAtual = null;
+    window.Tavinho?.nivel(0);
+    voltarAOuvir();
+  }
 }
 
 // ------------------------------------------------------------------ conversa
@@ -56,7 +127,7 @@ async function enviar(texto, voz = false) {
   texto = texto.trim();
   if (!texto || ocupado) return;
   ocupado = true;
-  speechSynthesis.cancel();
+  pararFala();
   addMsg("eu", texto);
   orb("pensando", "Pensando…");
   try {
@@ -128,7 +199,7 @@ async function medirNivel() {
 async function alternarConversa() {
   if (emConversa) {
     emConversa = false;
-    speechSynthesis.cancel();
+    pararFala();
     await invoke("conversa_parar");
     $("btn-conversa").classList.remove("ativa");
     $("btn-conversa").textContent = "🎙️ Conversar com o Jarvis";
@@ -151,7 +222,7 @@ listen("conversa_ouvindo", () => emConversa && orb("ouvindo", "Ouvindo…"));
 listen("conversa_processando", () => orb("pensando", "Entendendo…"));
 listen("conversa_retomou", () => emConversa && orb("ouvindo", "Pode falar…"));
 listen("conversa_interrompeu", () => {
-  speechSynthesis.cancel();
+  pararFala();
   orb("ouvindo", "Ouvindo…");
 });
 listen("conversa_erro", (e) => {
@@ -178,11 +249,70 @@ listen("conversa_texto", async (e) => {
 $("btn-panico").addEventListener("click", async () => {
   speechSynthesis.cancel();
   try {
+    pararFala();
+    if (emConversa) await alternarConversa();
     await invoke("panico");
-    orb("erro", "⛔ Parei tudo. Reative pelo painel ou mande /retomar.");
+    orb("erro", "⛔ Parei tudo. Clique em Retomar quando quiser voltar.");
+    mostrarPausado(true);
   } catch (e) {
     orb("erro", String(e));
   }
+});
+
+// ------------------------------------------------------------------ pausado / retomar
+function mostrarPausado(p) {
+  $("btn-retomar").hidden = !p;
+  $("btn-panico").hidden = p;
+}
+$("btn-retomar").addEventListener("click", async () => {
+  try {
+    await invoke("retomar");
+    mostrarPausado(false);
+    orb("", "Voltei. Diga ou escreva o que precisa.");
+  } catch (e) {
+    orb("erro", String(e));
+  }
+});
+async function verificarConta() {
+  try {
+    const c = await invoke("conta");
+    if (c.usuario?.pausado) {
+      mostrarPausado(true);
+      orb("erro", "⏸ O Jarvis está pausado. Clique em Retomar para voltar.");
+    } else mostrarPausado(false);
+  } catch {}
+}
+
+// ------------------------------------------------------------------ atualização
+let urlNova = null;
+async function verificarAtualizacao(manual = false) {
+  try {
+    const v = await invoke("verificar_atualizacao");
+    if (v.tem_nova) {
+      urlNova = v.url;
+      $("v-nova").textContent = v.nova;
+      $("faixa-atualizar").hidden = false;
+      if (manual) $("msg-atualizar").textContent = `Versão ${v.nova} disponível.`;
+    } else if (manual) $("msg-atualizar").textContent = `Você está na versão mais recente (${v.atual}).`;
+  } catch (e) {
+    if (manual) $("msg-atualizar").textContent = String(e);
+  }
+}
+async function baixarAtualizacao() {
+  if (!urlNova) await verificarAtualizacao(true);
+  if (urlNova) {
+    await invoke("abrir_link", { url: urlNova });
+    orb("", "Baixe o instalador e execute: ele atualiza por cima, sem perder o pareamento.");
+  }
+}
+$("btn-baixar").addEventListener("click", baixarAtualizacao);
+$("btn-atualizar").addEventListener("click", async () => {
+  $("msg-atualizar").textContent = "Verificando…";
+  await verificarAtualizacao(true);
+  if (urlNova) baixarAtualizacao();
+});
+$("btn-sair").addEventListener("click", async () => {
+  if (confirm("Fechar o Jarvis? Ele deixa de responder neste PC até você abrir de novo.")) await invoke("sair");
 });
 
 // ------------------------------------------------------------------ pareamento
@@ -269,7 +399,10 @@ async function carregar() {
     orb("", estado.privacidade ? "Modo privacidade: microfone desligado." : "Diga ou escreva o que precisa.");
     $("btn-mic").disabled = !!estado.privacidade;
     $("texto").focus();
+    verificarConta();
+    verificarAtualizacao();
   }
 }
 speechSynthesis.onvoiceschanged = () => {};
 carregar();
+setInterval(() => estado.pareado && verificarAtualizacao(), 6 * 3600 * 1000);

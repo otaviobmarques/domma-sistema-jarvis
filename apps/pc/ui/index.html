@@ -67,8 +67,13 @@
         <input id="texto" placeholder="Pedir ao Jarvis…  (Ctrl+Espaço)" autocomplete="off" />
         <button class="btn enviar" title="Enviar">➤</button>
       </form>
+      <div id="faixa-atualizar" class="faixa" hidden>
+        <span>✨ Nova versão <b id="v-nova"></b> disponível</span>
+        <button id="btn-baixar" class="btn mini" type="button">Atualizar</button>
+      </div>
       <div class="rodape">
         <button id="btn-panico" class="panico" type="button">⛔ Parar tudo</button>
+        <button id="btn-retomar" class="btn mini" type="button" hidden>▶ Retomar</button>
         <span class="muted">Ctrl+Espaço abre · Ctrl+Shift+Espaço conversa</span>
       </div>
     </section>
@@ -80,7 +85,12 @@
       <label class="check"><input type="checkbox" id="pref-privacidade" /> Modo privacidade (microfone desligado)</label>
       <p class="muted" id="info-conta"></p>
       <div class="linha">
+        <button class="btn sec" id="btn-atualizar" type="button">🔄 Verificar atualização</button>
+        <span id="msg-atualizar" class="muted"></span>
+      </div>
+      <div class="linha">
         <button class="btn sec" id="btn-desparear" type="button">Desconectar este PC</button>
+        <button class="btn sec perigo" id="btn-sair" type="button">⏻ Sair do Jarvis</button>
         <button class="btn" id="btn-fechar-config" type="button">Fechar</button>
       </div>
     </dialog>

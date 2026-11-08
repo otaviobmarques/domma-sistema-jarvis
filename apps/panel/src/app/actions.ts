@@ -266,7 +266,7 @@ export async function salvarMeta(token: string): Promise<Result> {
   }
 }
 
-export async function salvarChave(tipo: "anthropic" | "stt", key: string): Promise<Result> {
+export async function salvarChave(tipo: "anthropic" | "stt" | "tts", key: string): Promise<Result> {
   const u = await requireUser(["dono"]);
   try {
     await brain("/api/integrations/key", u.id, { body: { tipo, key } });
@@ -345,4 +345,29 @@ export async function revogarDispositivo(id: string) {
   const u = await requireUser();
   await brain(`/api/devices/${id}/revoke`, u.id, { method: "POST" });
   revalidatePath("/dispositivos");
+}
+
+// ------------------------------------------------------------------ voz natural
+export async function vozesDisponiveis(): Promise<{ id: string; nome: string; descricao: string; preview: string | null }[]> {
+  const u = await requireUser(["dono"]);
+  return brain("/api/tts/voices", u.id).catch(() => []);
+}
+
+export async function escolherVoz(voice_id: string): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/tts/voice", u.id, { body: { voice_id } });
+    return { ok: true, msg: "Voz escolhida." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function sintetizarFala(texto: string): Promise<{ audio?: string; mime?: string; erro?: string }> {
+  const u = await requireUser();
+  try {
+    return await brain("/api/tts", u.id, { body: { texto } });
+  } catch (e) {
+    return { erro: (e as Error).message };
+  }
 }

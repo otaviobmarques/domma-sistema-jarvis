@@ -13,6 +13,7 @@ import { hashPin, safeEqual } from "../lib/crypto.js";
 import { audit, db } from "../lib/db.js";
 import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } from "../lib/integrations.js";
 import { applyGoogle, applyKey } from "../lib/keys.js";
+import { listarVozes, sintetizar, tts, ttsConfigurado } from "../lib/tts.js";
 import { log } from "../lib/log.js";
 import { userById } from "../lib/users.js";
 import { criarCodigoPareamento, isOnline, revogar } from "../lib/devices.js";
@@ -126,6 +127,24 @@ export async function registerRoutes(app: FastifyInstance) {
       return { ok: true };
     });
 
+    api.get("/api/tts/voices", async (req) => {
+      needOwner(req);
+      return listarVozes();
+    });
+    api.post("/api/tts/voice", async (req) => {
+      const u = needOwner(req);
+      const { voice_id } = z.object({ voice_id: z.string().min(5).max(64) }).parse(req.body);
+      await db()`update integrations set config = config || ${db().json({ voice_id })} where tenant_id = ${u.tenant_id} and tipo = 'tts'`;
+      tts.voiceId = voice_id;
+      return { ok: true };
+    });
+    api.post("/api/tts", async (req) => {
+      needUser(req);
+      const { texto } = z.object({ texto: z.string().min(1).max(4000) }).parse(req.body);
+      const r = await sintetizar(texto);
+      return { audio: r.audio.toString("base64"), mime: r.mime };
+    });
+
     api.post("/api/transcribe", async (req) => {
       needUser(req);
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
@@ -233,7 +252,14 @@ export async function registerRoutes(app: FastifyInstance) {
 
     api.post("/api/integrations/key", async (req) => {
       const u = needOwner(req);
-      const { tipo, key } = z.object({ tipo: z.enum(["anthropic", "stt"]), key: z.string().min(20).max(500) }).parse(req.body);
+      const { tipo, key } = z.object({ tipo: z.enum(["anthropic", "stt", "tts"]), key: z.string().min(20).max(500) }).parse(req.body);
+      if (tipo === "tts") {
+        try {
+          await listarVozes(key);
+        } catch (err) {
+          throw Object.assign(new Error((err as Error).message), { statusCode: 400 });
+        }
+      }
       if (tipo === "anthropic") {
         // valida a chave sem gastar tokens
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
@@ -266,6 +292,8 @@ export async function registerRoutes(app: FastifyInstance) {
       return {
         anthropic: !!process.env.ANTHROPIC_API_KEY || (await has("anthropic")),
         stt: !!process.env.STT_API_KEY || (await has("stt")),
+        tts: ttsConfigurado(),
+        tts_voz: tts.voiceId || null,
         google: !!config.google.clientId,
       };
     });

@@ -178,6 +178,45 @@ async fn panico(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn sintetizar(state: State<'_, AppState>, texto: String) -> Result<Value, String> {
+    api(&state).post("/device/tts", json!({ "texto": texto })).await
+}
+
+#[tauri::command]
+async fn conta(state: State<'_, AppState>) -> Result<Value, String> {
+    api(&state).get("/device/me").await
+}
+
+#[tauri::command]
+async fn retomar(state: State<'_, AppState>) -> Result<(), String> {
+    api(&state).post("/device/resume", json!({})).await.map(|_| ())
+}
+
+/// Verifica se há versão nova. Devolve {atual, nova, url, notas, tem_nova}.
+#[tauri::command]
+async fn verificar_atualizacao(state: State<'_, AppState>) -> Result<Value, String> {
+    let v = api(&state).get("/device/versao").await?;
+    let atual = env!("CARGO_PKG_VERSION");
+    let nova = v["versao"].as_str().unwrap_or(atual).to_string();
+    let num = |s: &str| s.split('.').map(|p| p.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    Ok(json!({ "atual": atual, "nova": nova, "url": v["url"], "notas": v["notas"], "tem_nova": num(&nova) > num(atual) }))
+}
+
+#[tauri::command]
+fn abrir_link(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("link inválido".into());
+    }
+    opener::open(url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn sair(app: AppHandle, state: State<'_, AppState>) {
+    state.conversa.parar();
+    app.exit(0);
+}
+
+#[tauri::command]
 fn esconder(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
@@ -255,7 +294,7 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState { config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()), conversa: conversa::Conversa::nova() })
-        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder])
+        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder, sintetizar, conta, retomar, verificar_atualizacao, abrir_link, sair])
         .setup(move |app| {
             // atalhos globais
             let gs = app.global_shortcut();

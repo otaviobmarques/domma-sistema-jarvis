@@ -1,5 +1,5 @@
 import { removerIntegracao } from "@/app/actions";
-import { ActionButton, FonteForm, GoogleConnect, GoogleOAuthForm, KeyForm, MetaForm, WhatsAppPanel } from "@/components/client";
+import { ActionButton, FonteForm, GoogleConnect, GoogleOAuthForm, KeyForm, VozSelect, MetaForm, WhatsAppPanel } from "@/components/client";
 import { brain } from "@/lib/brain";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
@@ -14,10 +14,11 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
   const g = integ.find((i) => i.tipo === "google" && i.user_id === u.id);
   const meta = integ.some((i) => i.tipo === "meta_ads");
   const fontes = integ.filter((i) => i.tipo === "postgres");
-  const keys = await brain<{ anthropic: boolean; stt: boolean; google: boolean }>("/api/integrations/keys", u.id).catch(() => null);
+  const keys = await brain<{ anthropic: boolean; stt: boolean; google: boolean; tts: boolean; tts_voz: string | null }>("/api/integrations/keys", u.id).catch(() => null);
   const faltando = [
     !keys?.anthropic && "Chave da API do Claude (sem ela o Jarvis não pensa)",
     !keys?.stt && "Transcrição de áudio (para entender áudios do WhatsApp)",
+    !keys?.tts && "Voz natural (para o Jarvis falar com voz humana)",
     !keys?.google && "Credenciais do Google (seção Google abaixo) para Gmail, Agenda e Drive",
     !meta && "Token da Meta Ads",
   ].filter(Boolean) as string[];
@@ -49,6 +50,15 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
         <h2 className="font-semibold">Transcrição de áudio</h2>
         <p className="muted text-sm">Chave da Groq (console.groq.com → API Keys) para transcrever os áudios do WhatsApp com Whisper.</p>
         <KeyForm tipo="stt" configurado={!!keys?.stt} placeholder="gsk_..." />
+      </section>
+
+      <section className="card space-y-2">
+        <h2 className="font-semibold">Voz natural (ElevenLabs)</h2>
+        <p className="muted text-sm">
+          Deixa a voz do Jarvis humana no app de PC e no painel. Crie uma conta em elevenlabs.io (o plano grátis tem 10 mil caracteres/mês), vá em <b>Developers → API Keys</b> e cole a chave aqui.
+        </p>
+        <KeyForm tipo="tts" configurado={!!keys?.tts} placeholder="sk_..." />
+        {keys?.tts && <VozSelect atual={keys.tts_voz} />}
       </section>
 
       <section className="card space-y-2">

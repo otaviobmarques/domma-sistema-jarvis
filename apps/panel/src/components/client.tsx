@@ -18,6 +18,9 @@ import {
   rotinaRodar,
   salvarConta,
   salvarChave,
+  sintetizarFala,
+  vozesDisponiveis,
+  escolherVoz,
   salvarGoogleOAuth,
   salvarMeta,
   usuarioSalvar,
@@ -137,14 +140,27 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
   const alternarFala = () => {
     const v = !falar;
     setFalar(v);
-    if (!v) window.speechSynthesis?.cancel();
+    if (!v) {
+      window.speechSynthesis?.cancel();
+      audioRef.current?.pause();
+    }
     try {
       localStorage.setItem("jarvis-falar", v ? "1" : "0");
     } catch {}
   };
 
-  const dizer = (t: string) => {
-    if (!falar || !("speechSynthesis" in window)) return;
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const dizer = async (t: string) => {
+    if (!falar) return;
+    audioRef.current?.pause();
+    const r = await sintetizarFala(t).catch(() => ({ erro: "x" }) as { erro: string });
+    if ("audio" in r && r.audio) {
+      const a = new Audio(`data:${r.mime ?? "audio/mpeg"};base64,${r.audio}`);
+      audioRef.current = a;
+      void a.play().catch(() => {});
+      return;
+    }
+    if (!("speechSynthesis" in window)) return;
     const limpo = t.replace(/\*+/g, "").replace(/[#_`>]/g, "").replace(/https?:\/\/\S+/g, "link").slice(0, 1500);
     const u = new SpeechSynthesisUtterance(limpo);
     u.lang = "pt-BR";
@@ -162,6 +178,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
       return;
     }
     window.speechSynthesis?.cancel();
+    audioRef.current?.pause();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
       const tipo = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
@@ -466,7 +483,7 @@ export function MetaForm({ configurado }: { configurado: boolean }) {
   );
 }
 
-export function KeyForm({ tipo, configurado, placeholder }: { tipo: "anthropic" | "stt"; configurado: boolean; placeholder: string }) {
+export function KeyForm({ tipo, configurado, placeholder }: { tipo: "anthropic" | "stt" | "tts"; configurado: boolean; placeholder: string }) {
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; msg?: string } | null>(null);
   const [pending, start] = useTransition();
@@ -612,6 +629,45 @@ export function ParearPc() {
         </button>
       )}
       {cod?.erro && <p className="text-sm text-red-600">{cod.erro}</p>}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ escolha da voz natural
+export function VozSelect({ atual }: { atual: string | null }) {
+  const [vozes, setVozes] = useState<{ id: string; nome: string; descricao: string; preview: string | null }[] | null>(null);
+  const [sel, setSel] = useState(atual ?? "");
+  const [msg, setMsg] = useState<{ ok: boolean; msg?: string } | null>(null);
+  const [pending, start] = useTransition();
+  useEffect(() => {
+    void vozesDisponiveis().then(setVozes);
+  }, []);
+  if (!vozes) return <p className="muted text-sm">Carregando vozes…</p>;
+  if (!vozes.length) return null;
+  const atualV = vozes.find((v) => v.id === sel);
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2 flex-wrap items-center">
+        <select className="input max-w-sm" value={sel} onChange={(e) => setSel(e.target.value)}>
+          <option value="">Escolha uma voz…</option>
+          {vozes.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.nome}
+              {v.descricao ? ` — ${v.descricao}` : ""}
+            </option>
+          ))}
+        </select>
+        {atualV?.preview && (
+          <button type="button" className="btn btn-ghost" onClick={() => void new Audio(atualV.preview!).play()}>
+            ▶ Ouvir
+          </button>
+        )}
+        <button type="button" className="btn" disabled={pending || !sel} onClick={() => start(async () => setMsg(await escolherVoz(sel)))}>
+          Usar esta voz
+        </button>
+      </div>
+      <p className="muted text-xs">A prévia é em inglês; no Jarvis a voz fala português.</p>
+      <Msg m={msg} />
     </div>
   );
 }

@@ -425,3 +425,30 @@ body.cheia .conversa {
   border-color: #dc2626;
   color: #fff;
 }
+
+.btn.mini {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+.btn.perigo {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.faixa {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.faixa[hidden] {
+  display: none;
+}
+dialog .linha {
+  flex-wrap: wrap;
+  align-items: center;
+}

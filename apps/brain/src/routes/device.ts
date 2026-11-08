@@ -6,6 +6,8 @@ import { panic } from "../agent/panic.js";
 import { transcribe } from "../channels/stt.js";
 import { autenticar, marcarVisto, parear, proximaAcao, receberResultado } from "../lib/devices.js";
 import { userById } from "../lib/users.js";
+import { audit, db } from "../lib/db.js";
+import { sintetizar, ttsConfigurado } from "../lib/tts.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -63,6 +65,27 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
     dev.post("/device/transcribe", async (req) => {
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
       return { texto: await transcribe(Buffer.from(audio, "base64"), mime) };
+    });
+
+    // Voz natural para as respostas
+    dev.post("/device/tts", async (req) => {
+      const { texto } = z.object({ texto: z.string().min(1).max(4000) }).parse(req.body);
+      if (!ttsConfigurado()) return { audio: null, motivo: "voz natural não configurada" };
+      const r = await sintetizar(texto);
+      return { audio: r.audio.toString("base64"), mime: r.mime };
+    });
+
+    dev.get("/device/versao", async () => {
+      const [r] = await db()<{ versao: string; url: string; notas: string | null }[]>`
+        select versao, url, notas from app_releases where plataforma = 'windows'
+        order by string_to_array(versao, '.')::int[] desc limit 1`;
+      return r ?? null;
+    });
+
+    dev.post("/device/resume", async (req) => {
+      await db()`update users set pausado = false where id = ${req.device!.user_id}`;
+      await audit(req.device!.user_id, "retomar", "app", null, null, req.device!.nome);
+      return { ok: true };
     });
 
     // Botão de pânico do app (bandeja ou janela)

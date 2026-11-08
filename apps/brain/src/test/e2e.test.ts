@@ -1,0 +1,184 @@
+/**
+ * Teste ponta a ponta do cérebro contra um Postgres real e uma API Anthropic falsa.
+ * Rode com:  TEST_DATABASE_URL=postgres://... npm test
+ * (o banco precisa ter a migração aplicada; os dados de teste são apagados no fim)
+ */
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import { after, before, describe, it } from "node:test";
+
+const DB = process.env.TEST_DATABASE_URL;
+
+// ------------------------------------------------------------------ API Anthropic falsa
+type Script = (body: any) => any;
+let script: Script = () => ({});
+let fake: Server;
+const requests: any[] = [];
+
+function msg(content: any[], stop_reason = "end_turn") {
+  return {
+    id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5", content, stop_reason,
+    usage: { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+  };
+}
+
+describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definido" }, () => {
+  let mods: any;
+  let user: any;
+
+  before(async () => {
+    fake = createServer((req, res) => {
+      let data = "";
+      req.on("data", (c) => (data += c));
+      req.on("end", () => {
+        const body = JSON.parse(data || "{}");
+        requests.push(body);
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(script(body)));
+      });
+    });
+    await new Promise<void>((r) => fake.listen(0, r));
+    const port = (fake.address() as any).port;
+    process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${port}`;
+    process.env.ANTHROPIC_API_KEY = "test";
+    process.env.DATABASE_URL = DB;
+    process.env.BRAIN_API_SECRET = "s";
+    process.env.ENCRYPTION_KEY = "a".repeat(64);
+    process.env.WHATSAPP_ENABLED = "false";
+
+    const db = await import("../lib/db.js");
+    await db.connectDb();
+    mods = {
+      db,
+      orch: await import("../agent/orchestrator.js"),
+      approvals: await import("../agent/approvals.js"),
+      perms: await import("../agent/permissions.js"),
+      crypto: await import("../lib/crypto.js"),
+      users: await import("../lib/users.js"),
+      time: await import("../lib/time.js"),
+    };
+    const sql = db.db();
+    const [t] = await sql`insert into tenants (nome) values ('Teste E2E') returning id`;
+    const [u] = await sql`insert into users (tenant_id, nome, perfil, whatsapp, pin_hash)
+      values (${t!.id}, 'Dono Teste', 'dono', '5531988887777', ${mods.crypto.hashPin("123456")}) returning id`;
+    user = await mods.users.userById(u!.id);
+  });
+
+  after(async () => {
+    const sql = mods?.db.db();
+    (await import("../scheduler.js")).stopScheduler();
+    if (sql && user) await sql`delete from tenants where id = ${user.tenant_id}`;
+    await sql?.end({ timeout: 2 });
+    fake?.close();
+  });
+
+  it("criptografia e PIN", () => {
+    const enc = mods.crypto.encrypt("segredo");
+    assert.equal(mods.crypto.decrypt(enc), "segredo");
+    assert.ok(mods.crypto.verifyPin("123456", user.pin_hash));
+    assert.ok(!mods.crypto.verifyPin("000000", user.pin_hash));
+  });
+
+  it("encontra usuário pelo WhatsApp com ou sem o nono dígito", async () => {
+    assert.equal((await mods.users.userByWhatsApp("553188887777"))?.id, user.id);
+    assert.equal((await mods.users.userByWhatsApp("5531988887777"))?.id, user.id);
+    assert.equal(await mods.users.userByWhatsApp("5511000000000"), null);
+  });
+
+  it("matriz de permissões e autonomia", async () => {
+    const { decidir } = mods.perms;
+    const tools = (await import("../agent/tools/index.js")).TOOLS_BY_NAME;
+    const email = tools.get("gmail_enviar");
+    const pausar = tools.get("meta_ads_status");
+    const salvar = tools.get("memoria_salvar");
+    assert.deepEqual(decidir(user, email), { tipo: "aprovacao", nivel: "confirmar" });
+    assert.deepEqual(decidir(user, pausar), { tipo: "aprovacao", nivel: "pin" });
+    assert.deepEqual(decidir({ ...user, autonomia: 1 }, salvar), { tipo: "aprovacao", nivel: "confirmar" });
+    assert.deepEqual(decidir({ ...user, perfil: "operador" }, pausar).tipo, "negado");
+    // nível 4 expirado volta para 3, que ainda confirma mensagens para fora
+    assert.deepEqual(decidir({ ...user, autonomia: 4, autonomia_total_ate: new Date(Date.now() - 1000) }, email), { tipo: "aprovacao", nivel: "confirmar" });
+    assert.deepEqual(decidir({ ...user, autonomia: 4, autonomia_total_ate: new Date(Date.now() + 60000) }, email), { tipo: "livre" });
+  });
+
+  it("horário de silêncio atravessando a meia-noite", () => {
+    const { inQuietHours } = mods.time;
+    // 23h e 03h em São Paulo (UTC-3)
+    assert.ok(inQuietHours("22:00", "07:00", new Date("2026-11-09T02:00:00Z")));
+    assert.ok(inQuietHours("22:00", "07:00", new Date("2026-11-09T06:00:00Z")));
+    assert.ok(!inQuietHours("22:00", "07:00", new Date("2026-11-09T15:00:00Z")));
+  });
+
+  it("loop do agente: usa ferramenta de memória e responde", async () => {
+    let call = 0;
+    script = (body) => {
+      if (body.max_tokens === 16) return msg([{ type: "text", text: "COMPLEXO" }]); // roteador
+      if (body.output_config?.format) return msg([{ type: "text", text: JSON.stringify({ fatos: [] }) }]); // extração de memória
+      call++;
+      if (call === 1) {
+        return msg(
+          [{ type: "tool_use", id: "tu_1", name: "memoria_salvar", input: { conteudo: "O Alexandre cuida do tráfego da RedBox.", tipo: "pessoa", escopo: "pessoal" } }],
+          "tool_use",
+        );
+      }
+      const last = body.messages[body.messages.length - 1];
+      assert.equal(last.content[0].type, "tool_result");
+      assert.match(last.content[0].content, /Memória salva/);
+      return msg([{ type: "text", text: "Anotado: o Alexandre cuida do tráfego da RedBox." }]);
+    };
+    const r = await mods.orch.runTask({ user, canal: "painel", texto: "Lembra que o Alexandre cuida do tráfego da RedBox, ok? Isso é importante para as campanhas." });
+    assert.equal(r.resposta, "Anotado: o Alexandre cuida do tráfego da RedBox.");
+    assert.ok(r.custoUsd > 0);
+
+    const sql = mods.db.db();
+    const found = await sql`select * from search_memories(${user.id}, 'quem cuida do tráfego da redbox', 5)`;
+    assert.ok(found.some((m: any) => m.conteudo.includes("Alexandre")), "busca de memória deve achar o fato");
+    const [task] = await sql`select status, custo from tasks where id = ${r.taskId}`;
+    assert.equal(task.status, "concluida");
+    const steps = await sql`select ferramenta from task_steps where task_id = ${r.taskId}`;
+    assert.deepEqual(steps.map((s: any) => s.ferramenta), ["memoria_salvar"]);
+
+    // o system prompt estável vai com cache_control e o contexto dinâmico traz a memória relevante
+    const main = requests.find((b) => Array.isArray(b.system));
+    assert.equal(main.system[0].cache_control.type, "ephemeral");
+    assert.ok(main.tools.some((t: any) => t.name === "web_search"));
+    assert.deepEqual(main.fallbacks, "default");
+  });
+
+  it("ação sensível pede confirmação e só executa com o PIN certo", async () => {
+    let call = 0;
+    script = (body) => {
+      if (body.max_tokens === 16) return msg([{ type: "text", text: "SIMPLES" }]);
+      if (body.output_config?.format) return msg([{ type: "text", text: JSON.stringify({ fatos: [] }) }]);
+      call++;
+      if (call === 1) {
+        return msg([{ type: "tool_use", id: "tu_2", name: "rotina_criar", input: { nome: "x", cron: "0 8 * * *", instrucao: "y" } }], "tool_use");
+      }
+      return msg([{ type: "text", text: "ok" }]);
+    };
+    // autonomia 1: até criar rotina pede confirmação
+    const assisted = { ...user, autonomia: 1 };
+    const r = await mods.orch.runTask({ user: assisted, canal: "whatsapp", texto: "cria uma rotina de teste" });
+    assert.ok(r.aguardandoAprovacao);
+    assert.match(r.resposta, /Responda \*SIM\*/);
+    const sql = mods.db.db();
+    assert.equal((await sql`select count(*)::int as n from routines where user_id = ${user.id}`)[0].n, 0, "não pode executar antes da confirmação");
+
+    assert.equal(await mods.approvals.handleApprovalReply(assisted, "qual a previsão do tempo?", "whatsapp"), null, "mensagem comum não é resposta");
+    const done = await mods.approvals.handleApprovalReply(assisted, "sim", "whatsapp");
+    assert.match(done, /✅/);
+    assert.equal((await sql`select count(*)::int as n from routines where user_id = ${user.id}`)[0].n, 1);
+  });
+
+  it("botão de pânico cancela pendências e pausa", async () => {
+    const sql = mods.db.db();
+    const [t] = await sql`insert into tasks (user_id, pedido, status) values (${user.id}, 'x', 'aguardando_aprovacao') returning id`;
+    await sql`insert into approvals (task_id, user_id, nivel, ferramenta, entrada, resumo) values (${t!.id}, ${user.id}, 'pin', 'meta_ads_status', '{}', 'teste')`;
+    const { panic } = await import("../agent/panic.js");
+    await panic(user.id, { pausar: true });
+    assert.equal((await sql`select count(*)::int as n from approvals where user_id = ${user.id} and status = 'pendente'`)[0].n, 0);
+    const paused = await mods.users.userById(user.id);
+    assert.equal(paused.pausado, true);
+    const r = await mods.orch.runTask({ user: paused, canal: "whatsapp", texto: "oi" });
+    assert.match(r.resposta, /pausado/);
+  });
+});

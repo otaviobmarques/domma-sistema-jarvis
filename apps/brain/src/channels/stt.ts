@@ -4,7 +4,8 @@ import { config } from "../lib/config.js";
 export async function transcribe(audio: Buffer, mime = "audio/ogg"): Promise<string> {
   if (!config.stt.apiKey) throw new Error("Transcrição de áudio não configurada (STT_API_KEY).");
   const form = new FormData();
-  form.append("file", new Blob([new Uint8Array(audio)], { type: mime }), mime.includes("ogg") ? "audio.ogg" : "audio.mp3");
+  const ext = mime.includes("ogg") ? "ogg" : mime.includes("webm") ? "webm" : mime.includes("mp4") || mime.includes("m4a") ? "m4a" : mime.includes("wav") ? "wav" : "mp3";
+  form.append("file", new Blob([new Uint8Array(audio)], { type: mime.split(";")[0] }), `audio.${ext}`);
   form.append("model", config.stt.model);
   form.append("language", "pt");
   form.append("response_format", "json");

@@ -11,6 +11,7 @@ import {
   googleLink,
   panico,
   progresso,
+  transcrever,
   recusar,
   retomar,
   rotinaRodar,
@@ -111,6 +112,85 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
     end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [linhas, passos]);
 
+  // ---------------------------------------------------------------- voz
+  const [falar, setFalar] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+  const [segundos, setSegundos] = useState(0);
+  const [erroVoz, setErroVoz] = useState<string>();
+  const rec = useRef<MediaRecorder | null>(null);
+  const pedacos = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    try {
+      setFalar(localStorage.getItem("jarvis-falar") === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!gravando) return;
+    setSegundos(0);
+    const t = setInterval(() => setSegundos((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [gravando]);
+
+  const alternarFala = () => {
+    const v = !falar;
+    setFalar(v);
+    if (!v) window.speechSynthesis?.cancel();
+    try {
+      localStorage.setItem("jarvis-falar", v ? "1" : "0");
+    } catch {}
+  };
+
+  const dizer = (t: string) => {
+    if (!falar || !("speechSynthesis" in window)) return;
+    const limpo = t.replace(/\*+/g, "").replace(/[#_`>]/g, "").replace(/https?:\/\/\S+/g, "link").slice(0, 1500);
+    const u = new SpeechSynthesisUtterance(limpo);
+    u.lang = "pt-BR";
+    const voz = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith("pt-BR"));
+    if (voz) u.voice = voz;
+    u.rate = 1.05;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  };
+
+  const gravar = async () => {
+    setErroVoz(undefined);
+    if (gravando) {
+      rec.current?.stop();
+      return;
+    }
+    window.speechSynthesis?.cancel();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const tipo = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+      const r = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
+      pedacos.current = [];
+      r.ondataavailable = (e) => e.data.size && pedacos.current.push(e.data);
+      r.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setGravando(false);
+        const blob = new Blob(pedacos.current, { type: r.mimeType || "audio/webm" });
+        if (blob.size < 2000) return setErroVoz("Não captei nada. Segure o botão um pouco mais.");
+        setTranscrevendo(true);
+        const buf = new Uint8Array(await blob.arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+        const res = await transcrever(btoa(bin), blob.type);
+        setTranscrevendo(false);
+        if (res.erro || !res.texto) return setErroVoz(res.erro ?? "Não entendi. Pode repetir?");
+        enviar(res.texto);
+      };
+      rec.current = r;
+      r.start();
+      setGravando(true);
+      // limite de segurança: 2 minutos
+      setTimeout(() => r.state === "recording" && r.stop(), 120_000);
+    } catch {
+      setErroVoz("Não consegui acessar o microfone. Libere a permissão no navegador.");
+    }
+  };
+
   const enviar = (valor?: string) => {
     const t = (valor ?? texto).trim();
     if (!t || pending) return;
@@ -119,6 +199,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
     start(async () => {
       const r = await chat(t);
       setLinhas((l) => [...l, { autor: "assistant", texto: r.resposta }]);
+      dizer(r.resposta);
     });
   };
 
@@ -133,11 +214,21 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
             {pending ? (passos.length ? "trabalhando…" : "pensando…") : "pronto"}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={alternarFala}
+          title={falar ? "Respostas faladas: ligado" : "Respostas faladas: desligado"}
+          className="pill hover:bg-black/5"
+          style={falar ? { color: "var(--accent)", borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
+        >
+          <Icon name={falar ? "volume" : "mute"} size={15} />
+          <span className="hidden sm:inline">{falar ? "Voz ligada" : "Voz desligada"}</span>
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {linhas.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-6">
+          <div className="min-h-full flex flex-col items-center justify-center text-center gap-4">
             <Orb size={56} />
             <div>
               <div className="font-semibold">Como posso ajudar{nome ? `, ${nome}` : ""}?</div>
@@ -188,6 +279,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
         )}
         <div ref={end} />
       </div>
+      {erroVoz && <div className="px-4 pb-1 text-xs text-red-600">{erroVoz}</div>}
 
       <form
         className="flex gap-2 items-end p-3 border-t"
@@ -197,6 +289,21 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
           enviar();
         }}
       >
+        <button
+          type="button"
+          onClick={gravar}
+          disabled={pending || transcrevendo}
+          title={gravando ? "Parar e enviar" : "Falar com o Jarvis"}
+          className={`h-[38px] px-3 rounded-[0.65rem] inline-flex items-center gap-1.5 text-sm font-semibold border transition shrink-0 ${gravando ? "animate-pulse" : ""}`}
+          style={
+            gravando
+              ? { background: "#dc2626", color: "white", borderColor: "#dc2626" }
+              : { background: "var(--card)", color: "var(--accent)", borderColor: "var(--line)" }
+          }
+        >
+          <Icon name="mic" size={16} />
+          {gravando && <span>{`${Math.floor(segundos / 60)}:${String(segundos % 60).padStart(2, "0")}`}</span>}
+        </button>
         <textarea
           className="input resize-none"
           rows={1}
@@ -208,7 +315,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
               enviar();
             }
           }}
-          placeholder="Escreva um pedido… (Enter envia, Shift+Enter quebra linha)"
+          placeholder={gravando ? "Ouvindo… clique no microfone para enviar" : transcrevendo ? "Transcrevendo…" : "Escreva ou fale um pedido… (Enter envia)"}
         />
         <button className="btn !px-3 h-[38px]" disabled={pending || !texto.trim()} title="Enviar">
           <Icon name="send" size={16} />

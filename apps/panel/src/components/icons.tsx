@@ -61,6 +61,24 @@ const P: Record<string, React.ReactNode> = {
       <path d="m16 17 5-5-5-5M21 12H9" />
     </>
   ),
+  mic: (
+    <>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
+    </>
+  ),
+  volume: (
+    <>
+      <path d="M11 5 6 9H3v6h3l5 4z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+    </>
+  ),
+  mute: (
+    <>
+      <path d="M11 5 6 9H3v6h3l5 4z" />
+      <path d="m22 9-6 6M16 9l6 6" />
+    </>
+  ),
   send: <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />,
   check: <path d="m5 12 5 5L20 7" />,
   circle: <circle cx="12" cy="12" r="8" />,

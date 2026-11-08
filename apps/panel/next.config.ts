@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["postgres"],
+  // áudio de voz do chat vai por server action (até ~2 min de fala)
+  experimental: { serverActions: { bodySizeLimit: "12mb" } },
   // O fluxo OAuth do Google é tratado pelo cérebro, mas fica no mesmo domínio do painel.
   async rewrites() {
     return [{ source: "/oauth/:path*", destination: `${brain}/oauth/:path*` }];

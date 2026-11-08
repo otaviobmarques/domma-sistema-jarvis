@@ -46,6 +46,15 @@ export async function progresso(): Promise<string[]> {
   return rows.map((r) => `${r.erro ? "⚠️" : "✓"} ${ROTULO[r.ferramenta] ?? r.ferramenta.replace(/_/g, " ")}`);
 }
 
+export async function transcrever(audioBase64: string, mime: string): Promise<{ texto?: string; erro?: string }> {
+  const u = await requireUser();
+  try {
+    return await brain<{ texto: string }>("/api/transcribe", u.id, { body: { audio: audioBase64, mime } });
+  } catch (e) {
+    return { erro: (e as Error).message };
+  }
+}
+
 // ------------------------------------------------------------------ aprovações e pânico
 export async function aprovar(id: string, pin?: string): Promise<Result> {
   const u = await requireUser();

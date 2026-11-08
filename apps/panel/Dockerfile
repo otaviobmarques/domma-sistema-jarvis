@@ -7,6 +7,9 @@ COPY apps/panel/package.json apps/panel/
 RUN npm ci --workspace @jarvis/panel --include-workspace-root=false
 COPY apps/panel apps/panel
 ENV NEXT_TELEMETRY_DISABLED=1
+# Os rewrites (/oauth → cérebro) são resolvidos no build: o Railway passa a variável como build arg
+ARG BRAIN_URL
+ENV BRAIN_URL=$BRAIN_URL
 RUN npm run build --workspace @jarvis/panel
 
 FROM node:22-slim

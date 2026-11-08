@@ -11,7 +11,7 @@ export default async function Tarefa({ params }: { params: Promise<{ id: string 
   const u = await requireUser();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
-  const [t] = await sql<{ id: string; user_id: string; pedido: string; resposta: string | null; status: string; canal: string; modelo: string; inicio: Date; fim: Date | null; custo: string; tokens_entrada: number; tokens_saida: number; nome: string }[]>`
+  const [t] = await sql<{ id: string; user_id: string; pedido: string; resposta: string | null; status: string; canal: string; modelo: string; inicio: Date; fim: Date | null; custo: string; tokens_entrada: number; tokens_saida: number; nome: string; plano_json: any }[]>`
     select t.*, u.nome from tasks t join users u on u.id = t.user_id
     where t.id = ${id} and u.tenant_id = ${u.tenant_id} and (t.user_id = ${u.id} or ${u.perfil} = 'dono')`;
   if (!t) notFound();
@@ -36,6 +36,12 @@ export default async function Tarefa({ params }: { params: Promise<{ id: string 
           <span className="tag">{usd(t.custo)}</span>
           {t.fim && <span className="tag">{Math.round((+t.fim - +t.inicio) / 1000)} s</span>}
         </div>
+        {t.plano_json?.chamadas?.length > 0 && (
+          <div className="muted text-xs">
+            Roteador: {t.plano_json.rota?.motivo} · chamadas ao Claude:{" "}
+            {t.plano_json.chamadas.map((c: any) => `${(c.ms / 1000).toFixed(1)}s`).join(" + ")} (cache: {t.plano_json.chamadas.reduce((a: number, c: any) => a + c.cache, 0).toLocaleString("pt-BR")} tokens)
+          </div>
+        )}
       </div>
       <h2 className="font-semibold">Linha do tempo</h2>
       <ol className="space-y-2">

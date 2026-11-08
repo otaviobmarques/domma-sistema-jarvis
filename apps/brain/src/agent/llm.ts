@@ -37,20 +37,26 @@ export async function createMessage(params: CreateParams, signal?: AbortSignal) 
   return anthropic.beta.messages.create({ ...params, ...extra }, { signal });
 }
 
-export type Rota = { model: string; effort: "low" | "medium" | "high" };
+export type Rota = { model: string; effort: "low" | "medium" | "high"; motivo: string };
+
+const ANALISE = /\b(analis|compar|relat[oó]rio|estrat[eé]g|planej|por que|porque|investig|diagn[oó]stic|recomend|tend[eê]ncia|otimiz|proposta|elabor|redij|escrev[ae] (um|uma) (texto|e-?mail|proposta|documento))/;
+const CONSULTA = /\b(quant[oa]s?|qual|quais|quando|onde|lista|mostra|me (diz|fala|manda)|tem algum|agenda|compromisso|reuni|e-?mails?|n[aã]o lid|resum|status|lembr|marc[ae]|cri[ae]|cancel|mov[ae])/;
 
 /**
  * Roteador de modelos (seção 2.1): pedido simples → modelo rápido; complexo → modelo forte.
- * Heurística barata primeiro; o modelo rápido decide só quando há dúvida.
+ * Heurística barata primeiro; o modelo rápido só decide quando há dúvida.
  */
 export async function rotear(texto: string, temAnexo: boolean): Promise<Rota> {
   const t = texto.toLowerCase();
-  const forte: Rota = { model: config.modelStrong, effort: "high" };
-  const rapido: Rota = { model: config.modelFast, effort: "low" };
+  const forte = (motivo: string): Rota => ({ model: config.modelStrong, effort: "medium", motivo });
+  const profundo = (motivo: string): Rota => ({ model: config.modelStrong, effort: "high", motivo });
+  const rapido = (motivo: string): Rota => ({ model: config.modelFast, effort: "medium", motivo });
 
-  if (temAnexo || texto.length > 600) return forte;
-  if (/\b(analis|compar|relat[oó]rio|estrat|planej|por que|porque|campanha|todas as|todos os|resum[oa] (da|do|das|dos) (semana|m[eê]s)|investig)/.test(t)) return forte;
-  if (texto.length < 80 && /^(oi|ol[aá]|bom dia|boa tarde|boa noite|obrigad|valeu|que horas|qual (a|o) data|ok|beleza)/.test(t)) return rapido;
+  if (temAnexo) return forte("anexo");
+  if (texto.length > 800) return forte("pedido longo");
+  if (ANALISE.test(t)) return profundo("análise");
+  if (texto.length < 300 && CONSULTA.test(t)) return rapido("consulta direta");
+  if (texto.length < 60) return rapido("mensagem curta");
 
   try {
     const r = await anthropic.messages.create({
@@ -58,12 +64,12 @@ export async function rotear(texto: string, temAnexo: boolean): Promise<Rota> {
       max_tokens: 16,
       output_config: { effort: "low" },
       system:
-        "Classifique o pedido de um assistente executivo. Responda só SIMPLES (uma consulta ou ação direta, uma ferramenta) ou COMPLEXO (várias etapas, análise, comparação, decisão, texto longo).",
+        "Classifique o pedido feito a um assistente executivo que tem ferramentas (agenda, e-mail, anúncios, bancos de dados). Responda só SIMPLES ou COMPLEXO. SIMPLES: consultar, contar, listar, resumir, criar ou alterar algo com poucas etapas. COMPLEXO: análise, comparação entre várias fontes, estratégia, decisão, texto longo e elaborado.",
       messages: [{ role: "user", content: texto.slice(0, 1500) }],
     });
     const out = r.content.find((b) => b.type === "text")?.text.toUpperCase() ?? "";
-    return out.includes("SIMPLES") ? { model: config.modelFast, effort: "medium" } : forte;
+    return out.includes("SIMPLES") ? rapido("classificador") : forte("classificador");
   } catch {
-    return forte;
+    return forte("classificador indisponível");
   }
 }

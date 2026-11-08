@@ -121,6 +121,8 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   const anexosMeta = (input.anexos ?? []).map((a) => ({ tipo: a.tipo, nome: "nome" in a ? a.nome : undefined }));
   await sql`insert into messages (conversation_id, autor, conteudo, anexos) values (${conversationId}, 'user', ${input.texto}, ${json(anexosMeta)})`;
 
+  // contexto dinâmico (memórias, perfil) e roteamento em paralelo
+  const ctxPromise = dynamicContext(user, canal, input.texto);
   const rota = await rotear(input.texto, (input.anexos?.length ?? 0) > 0);
   const [task] = await sql<{ id: string }[]>`
     insert into tasks (user_id, conversation_id, canal, pedido, modelo, executor)
@@ -145,7 +147,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
 
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
     { type: "text", text: STABLE_SYSTEM, cache_control: { type: "ephemeral" } },
-    { type: "text", text: await dynamicContext(user, canal, input.texto) },
+    { type: "text", text: await ctxPromise },
   ];
   const messages: Anthropic.Beta.BetaMessageParam[] = [...hist, { role: "user", content: userContent(input.texto, input.anexos) }];
 
@@ -155,9 +157,12 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   let resposta = "";
   let pendente: { id: string; nivel: "confirmar" | "pin" | "pin_voz"; resumo: string } | null = null;
   let status: "concluida" | "erro" | "cancelada" | "aguardando_aprovacao" = "concluida";
+  const t0 = Date.now();
+  const chamadas: { modelo: string; ms: number; entrada: number; cache: number; saida: number }[] = [];
 
   try {
     for (let step = 0; step < config.maxAgentSteps; step++) {
+      const tc = Date.now();
       const res = await createMessage(
         {
           model: rota.model,
@@ -169,6 +174,13 @@ export async function runTask(input: RunInput): Promise<RunResult> {
         },
         ac.signal,
       );
+      chamadas.push({
+        modelo: res.model,
+        ms: Date.now() - tc,
+        entrada: res.usage.input_tokens ?? 0,
+        cache: res.usage.cache_read_input_tokens ?? 0,
+        saida: res.usage.output_tokens ?? 0,
+      });
       custo += costUsd(res.model, res.usage);
       tokIn += (res.usage.input_tokens ?? 0) + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0);
       tokOut += res.usage.output_tokens ?? 0;
@@ -229,7 +241,8 @@ export async function runTask(input: RunInput): Promise<RunResult> {
 
   await sql`
     update tasks set status = ${status}, resposta = ${resposta}, fim = ${status === "aguardando_aprovacao" ? null : new Date()},
-      tokens_entrada = ${tokIn}, tokens_saida = ${tokOut}, custo = ${custo}
+      tokens_entrada = ${tokIn}, tokens_saida = ${tokOut}, custo = ${custo},
+      plano_json = ${json({ rota, total_ms: Date.now() - t0, chamadas })}
     where id = ${taskId}`;
   await sql`insert into messages (conversation_id, autor, conteudo, tokens, custo) values (${conversationId}, 'assistant', ${resposta}, ${tokIn + tokOut}, ${custo})`;
   await sql`update conversations set ultima_msg_em = now() where id = ${conversationId}`;

@@ -20,6 +20,32 @@ export async function chat(texto: string): Promise<{ resposta: string }> {
   }
 }
 
+const ROTULO: Record<string, string> = {
+  memoria_buscar: "consultando a memória",
+  memoria_salvar: "guardando na memória",
+  gmail_buscar: "buscando e-mails",
+  gmail_contar: "contando e-mails",
+  gmail_ler: "lendo um e-mail",
+  gmail_rascunho: "escrevendo rascunho",
+  agenda_listar: "olhando a agenda",
+  agenda_horario_livre: "procurando horário livre",
+  drive_buscar: "procurando no Drive",
+  meta_ads_desempenho: "puxando dados da Meta Ads",
+  google_ads_desempenho: "puxando dados do Google Ads",
+  dados_consultar: "consultando o sistema",
+  dados_esquema: "entendendo o banco de dados",
+};
+
+/** Passos da tarefa em andamento no painel (para mostrar progresso ao vivo no chat). */
+export async function progresso(): Promise<string[]> {
+  const u = await requireUser();
+  const rows = await sql<{ ferramenta: string; erro: string | null }[]>`
+    select s.ferramenta, s.erro from task_steps s
+    where s.task_id = (select id from tasks where user_id = ${u.id} and canal = 'painel' and status = 'executando' order by inicio desc limit 1)
+    order by s.criado_em`;
+  return rows.map((r) => `${r.erro ? "⚠️" : "✓"} ${ROTULO[r.ferramenta] ?? r.ferramenta.replace(/_/g, " ")}`);
+}
+
 // ------------------------------------------------------------------ aprovações e pânico
 export async function aprovar(id: string, pin?: string): Promise<Result> {
   const u = await requireUser();

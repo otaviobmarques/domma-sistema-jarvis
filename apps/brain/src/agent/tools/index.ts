@@ -13,6 +13,7 @@ export const ALL_TOOLS: ToolDef[] = [
   memory.memoriaSalvar,
   memory.memoriaEsquecer,
   google.gmailBuscar,
+  google.gmailContar,
   google.gmailLer,
   google.gmailRascunho,
   google.gmailEnviar,

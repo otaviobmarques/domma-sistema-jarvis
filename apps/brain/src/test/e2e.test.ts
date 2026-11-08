@@ -141,7 +141,8 @@ describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definid
     const main = requests.find((b) => Array.isArray(b.system));
     assert.equal(main.system[0].cache_control.type, "ephemeral");
     assert.ok(main.tools.some((t: any) => t.name === "web_search"));
-    assert.deepEqual(main.fallbacks, "default");
+    // fallback de recusa só nos modelos que suportam (Opus); o roteador mandou esta consulta curta ao modelo rápido
+    assert.equal(main.fallbacks, main.model === "claude-opus-5-5" ? "default" : undefined);
   });
 
   it("ação sensível pede confirmação e só executa com o PIN certo", async () => {

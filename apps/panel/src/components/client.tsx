@@ -9,6 +9,7 @@ import {
   definirPin,
   googleLink,
   panico,
+  progresso,
   recusar,
   retomar,
   rotinaRodar,
@@ -68,6 +69,15 @@ export function Chat({ inicial }: { inicial: Linha[] }) {
   const [texto, setTexto] = useState("");
   const [pending, start] = useTransition();
   const end = useRef<HTMLDivElement>(null);
+  const [passos, setPassos] = useState<string[]>([]);
+  useEffect(() => {
+    if (!pending) {
+      setPassos([]);
+      return;
+    }
+    const t = setInterval(() => void progresso().then(setPassos).catch(() => {}), 1200);
+    return () => clearInterval(t);
+  }, [pending]);
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth" });
   }, [linhas]);
@@ -97,7 +107,14 @@ export function Chat({ inicial }: { inicial: Linha[] }) {
             </div>
           </div>
         ))}
-        {pending && <div className="muted text-sm">Jarvis está pensando…</div>}
+        {pending && (
+          <div className="muted text-sm space-y-0.5">
+            {passos.map((p, i) => (
+              <div key={i}>{p}</div>
+            ))}
+            <div>Jarvis está {passos.length ? "trabalhando" : "pensando"}…</div>
+          </div>
+        )}
         <div ref={end} />
       </div>
       <form

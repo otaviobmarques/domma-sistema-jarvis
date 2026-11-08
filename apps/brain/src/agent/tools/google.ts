@@ -52,12 +52,42 @@ export const gmailBuscar = defineTool({
     const list = await gmail.users.messages.list({ userId: "me", q: consulta, maxResults: max });
     const ids = list.data.messages ?? [];
     if (!ids.length) return "Nenhum e-mail encontrado.";
+    const mais = list.data.nextPageToken ? `\n(Há mais resultados além destes ${ids.length}. Para saber o total, use gmail_contar.)` : "";
     const msgs = await Promise.all(
       ids.map((m) => gmail.users.messages.get({ userId: "me", id: m.id!, format: "metadata", metadataHeaders: ["From", "Subject", "Date"] })),
     );
     return msgs
       .map(({ data }) => `- id=${data.id} | ${header(data, "Date")} | De: ${header(data, "From")} | ${header(data, "Subject")}\n  ${data.snippet ?? ""}`)
-      .join("\n");
+      .join("\n") + mais;
+  },
+});
+
+export const gmailContar = defineTool({
+  name: "gmail_contar",
+  description:
+    "Conta e-mails de forma exata e rápida, sem ler o conteúdo. Aceita várias consultas de uma vez (sintaxe do Gmail). Use para perguntas do tipo 'quantos e-mails…'. Ex.: ['is:unread in:inbox', 'is:unread newer_than:1d', 'from:detran after:2026/11/01'].",
+  grupo: "email",
+  nivel: "livre",
+  perfis: [...gestao],
+  muda: false,
+  disponivel: disp,
+  schema: z.object({ consultas: z.array(z.string()).min(1).max(10) }),
+  async run({ consultas }, ctx) {
+    const gmail = google.gmail({ version: "v1", auth: await googleFor(ctx.user.tenant_id, ctx.user.id) });
+    const contar = async (q: string) => {
+      let total = 0;
+      let pageToken: string | undefined;
+      // só ids, 500 por página: rápido mesmo com milhares de e-mails
+      for (let i = 0; i < 20; i++) {
+        const { data } = await gmail.users.messages.list({ userId: "me", q, maxResults: 500, pageToken, fields: "messages/id,nextPageToken" });
+        total += data.messages?.length ?? 0;
+        pageToken = data.nextPageToken ?? undefined;
+        if (!pageToken) return `${total}`;
+      }
+      return `mais de ${total}`;
+    };
+    const res = await Promise.all(consultas.map(async (q) => `- "${q}": ${await contar(q)}`));
+    return res.join("\n");
   },
 });
 

@@ -13,6 +13,7 @@ import {
   retomar,
   rotinaRodar,
   salvarConta,
+  salvarChave,
   salvarMeta,
   usuarioSalvar,
   whatsappLogout,
@@ -217,6 +218,33 @@ export function MetaForm({ configurado }: { configurado: boolean }) {
         <input className="input" type="password" placeholder="Token de acesso (System User) da Meta" value={token} onChange={(e) => setToken(e.target.value)} />
         <button className="btn" disabled={pending || token.length < 20} onClick={() => start(async () => setMsg(await salvarMeta(token)))}>
           Salvar
+        </button>
+      </div>
+      <Msg m={msg} />
+    </div>
+  );
+}
+
+export function KeyForm({ tipo, configurado, placeholder }: { tipo: "anthropic" | "stt"; configurado: boolean; placeholder: string }) {
+  const [key, setKey] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; msg?: string } | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-2">
+      {configurado && <p className="text-sm">✅ Configurada</p>}
+      <div className="flex gap-2">
+        <input className="input" type="password" autoComplete="off" placeholder={placeholder} value={key} onChange={(e) => setKey(e.target.value.trim())} />
+        <button
+          className="btn"
+          disabled={pending || key.length < 20}
+          onClick={() =>
+            start(async () => {
+              setMsg(await salvarChave(tipo, key));
+              setKey("");
+            })
+          }
+        >
+          {pending ? "Validando…" : "Salvar"}
         </button>
       </div>
       <Msg m={msg} />

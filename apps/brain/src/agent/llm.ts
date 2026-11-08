@@ -1,7 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../lib/config.js";
 
-export const anthropic = new Anthropic({ maxRetries: 3 });
+export let anthropic = new Anthropic({ maxRetries: 3 });
+
+/** Troca a chave em tempo de execução (cadastrada no painel). Os módulos que importam `anthropic` veem a nova instância. */
+export function setAnthropicKey(apiKey: string) {
+  anthropic = new Anthropic({ apiKey, maxRetries: 3 });
+}
 
 // USD por 1M tokens (entrada, saída). Cache read ≈ 10% da entrada, escrita ≈ 125%.
 const PRICES: Record<string, [number, number]> = {

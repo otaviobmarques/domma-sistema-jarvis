@@ -1,5 +1,6 @@
 import { removerIntegracao } from "@/app/actions";
-import { ActionButton, FonteForm, GoogleConnect, MetaForm, WhatsAppPanel } from "@/components/client";
+import { ActionButton, FonteForm, GoogleConnect, KeyForm, MetaForm, WhatsAppPanel } from "@/components/client";
+import { brain } from "@/lib/brain";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 
@@ -13,11 +14,41 @@ export default async function Integracoes({ searchParams }: { searchParams: Prom
   const g = integ.find((i) => i.tipo === "google" && i.user_id === u.id);
   const meta = integ.some((i) => i.tipo === "meta_ads");
   const fontes = integ.filter((i) => i.tipo === "postgres");
+  const keys = await brain<{ anthropic: boolean; stt: boolean; google: boolean }>("/api/integrations/keys", u.id).catch(() => null);
+  const faltando = [
+    !keys?.anthropic && "Chave da API do Claude (sem ela o Jarvis não pensa)",
+    !keys?.stt && "Transcrição de áudio (para entender áudios do WhatsApp)",
+    !keys?.google && "Google OAuth (GOOGLE_CLIENT_ID/SECRET no cérebro) para Gmail, Agenda e Drive",
+    !meta && "Token da Meta Ads",
+  ].filter(Boolean) as string[];
 
   return (
     <div className="space-y-6">
       <h1 className="title">Integrações</h1>
       {google === "ok" && <div className="card text-sm text-green-600">Conta Google conectada.</div>}
+
+      {faltando.length > 0 && (
+        <div className="card text-sm">
+          <b>Falta configurar:</b>
+          <ul className="list-disc ml-5 mt-1">
+            {faltando.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <section className="card space-y-2">
+        <h2 className="font-semibold">Inteligência (Claude)</h2>
+        <p className="muted text-sm">Chave da API da Anthropic (console.anthropic.com → API Keys). Validada antes de salvar e guardada criptografada.</p>
+        <KeyForm tipo="anthropic" configurado={!!keys?.anthropic} placeholder="sk-ant-..." />
+      </section>
+
+      <section className="card space-y-2">
+        <h2 className="font-semibold">Transcrição de áudio</h2>
+        <p className="muted text-sm">Chave da Groq (console.groq.com → API Keys) para transcrever os áudios do WhatsApp com Whisper.</p>
+        <KeyForm tipo="stt" configurado={!!keys?.stt} placeholder="gsk_..." />
+      </section>
 
       <section className="card space-y-2">
         <h2 className="font-semibold">WhatsApp do Jarvis</h2>

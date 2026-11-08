@@ -10,7 +10,8 @@ import { logoutWhatsApp, sendWhatsApp, whatsappStatus } from "../channels/whatsa
 import { config } from "../lib/config.js";
 import { hashPin, safeEqual } from "../lib/crypto.js";
 import { audit, db } from "../lib/db.js";
-import { GOOGLE_SCOPES, googleOAuthClient, saveIntegration } from "../lib/integrations.js";
+import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } from "../lib/integrations.js";
+import { applyKey } from "../lib/keys.js";
 import { log } from "../lib/log.js";
 import { userById } from "../lib/users.js";
 import { reloadRoutines, runRoutine } from "../scheduler.js";
@@ -196,6 +197,34 @@ export async function registerRoutes(app: FastifyInstance) {
       await saveIntegration({ tenantId: u.tenant_id, userId: null, tipo: "meta_ads", tokens: { access_token: token } });
       await audit(u.id, "integracao.meta.salvar");
       return { ok: true };
+    });
+
+    api.post("/api/integrations/key", async (req) => {
+      const u = needOwner(req);
+      const { tipo, key } = z.object({ tipo: z.enum(["anthropic", "stt"]), key: z.string().min(20).max(500) }).parse(req.body);
+      if (tipo === "anthropic") {
+        // valida a chave sem gastar tokens
+        const Anthropic = (await import("@anthropic-ai/sdk")).default;
+        try {
+          await new Anthropic({ apiKey: key, maxRetries: 1 }).models.retrieve(config.modelStrong);
+        } catch (err) {
+          throw Object.assign(new Error(err instanceof Anthropic.AuthenticationError ? "Chave inválida" : `Não consegui validar: ${(err as Error).message}`), { statusCode: 400 });
+        }
+      }
+      await saveIntegration({ tenantId: u.tenant_id, userId: null, tipo, tokens: { api_key: key } });
+      applyKey(tipo, key);
+      await audit(u.id, `integracao.${tipo}.salvar`);
+      return { ok: true };
+    });
+
+    api.get("/api/integrations/keys", async (req) => {
+      const u = needOwner(req);
+      const has = async (t: string) => !!(await getIntegration(u.tenant_id, t))?.tokens.api_key;
+      return {
+        anthropic: !!process.env.ANTHROPIC_API_KEY || (await has("anthropic")),
+        stt: !!process.env.STT_API_KEY || (await has("stt")),
+        google: !!config.google.clientId,
+      };
     });
 
     api.post("/api/integrations/postgres", async (req) => {

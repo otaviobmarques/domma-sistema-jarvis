@@ -231,6 +231,17 @@ export async function salvarMeta(token: string): Promise<Result> {
   }
 }
 
+export async function salvarChave(tipo: "anthropic" | "stt", key: string): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/integrations/key", u.id, { body: { tipo, key } });
+    revalidatePath("/integracoes");
+    return { ok: true, msg: "Chave salva e ativada." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function adicionarFonte(nome: string, descricao: string, url: string): Promise<Result> {
   const u = await requireUser(["dono"]);
   try {

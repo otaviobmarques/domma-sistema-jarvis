@@ -5,15 +5,17 @@ import { onWhatsAppMessage, startWhatsApp, stopWhatsApp } from "./channels/whats
 import { config, requireConfig } from "./lib/config.js";
 import { connectDb, db } from "./lib/db.js";
 import { log } from "./lib/log.js";
+import { hasStoredKey, loadStoredKeys } from "./lib/keys.js";
 import { registerRoutes } from "./routes/api.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 
 async function main() {
   requireConfig();
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
-    log.warn("ANTHROPIC_API_KEY não definida — o Jarvis sobe, mas não vai conseguir pensar até você configurar.");
-  }
   await connectDb();
+  await loadStoredKeys();
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !(await hasStoredKey("anthropic"))) {
+    log.warn("Chave da API do Claude não configurada — cadastre no painel (Integrações).");
+  }
 
   const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
   await app.register(cors, { origin: [config.panelUrl], credentials: true });

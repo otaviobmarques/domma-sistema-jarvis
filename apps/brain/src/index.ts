@@ -18,7 +18,8 @@ async function main() {
   const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
   await app.register(cors, { origin: [config.panelUrl], credentials: true });
   await registerRoutes(app);
-  await app.listen({ port: config.port, host: "0.0.0.0" });
+  // "::" aceita IPv4 e IPv6 (a rede privada do Railway usa IPv6)
+  await app.listen({ port: config.port, host: "::" });
   log.info({ port: config.port }, "cérebro do Jarvis no ar");
 
   onWhatsAppMessage(handleWhatsApp);

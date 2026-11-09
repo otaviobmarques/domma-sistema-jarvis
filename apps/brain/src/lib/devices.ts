@@ -60,8 +60,19 @@ export async function parear(codigo: string, nome: string, tipo: "pc" | "android
   return { deviceId: d!.id, userId: p.user_id, token };
 }
 
+const cacheAuth = new Map<string, { d: { id: string; user_id: string; nome: string; tipo: string }; ate: number }>();
+
 export async function autenticar(token: string) {
   if (!token) return null;
+  const h = sha(token);
+  const c = cacheAuth.get(h);
+  if (c && c.ate > Date.now()) return c.d;
+  const d = await autenticarBanco(token);
+  if (d) cacheAuth.set(h, { d, ate: Date.now() + 60_000 });
+  return d;
+}
+
+async function autenticarBanco(token: string) {
   const sql = db();
   const [d] = await sql<{ id: string; user_id: string; nome: string; tipo: string }[]>`
     select id, user_id, nome, tipo from devices where token_hash = ${sha(token)} and ativo`;
@@ -71,6 +82,7 @@ export async function autenticar(token: string) {
 export async function revogar(deviceId: string, userId: string) {
   const sql = db();
   await sql`update devices set ativo = false, token_hash = null, status = 'revogado' where id = ${deviceId} and user_id = ${userId}`;
+  cacheAuth.clear();
   esperando.get(deviceId)?.(null);
   await audit(userId, "dispositivo.revogar", deviceId);
 }

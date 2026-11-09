@@ -55,7 +55,21 @@ function inputSchema(t: ToolDef): Anthropic.Beta.BetaTool["input_schema"] {
   return s;
 }
 
+const cacheConversa = new Map<string, { id: string; em: number }>();
+
 async function getConversation(user: User, canal: Canal, nova: boolean) {
+  const chave = `${user.id}:${canal}`;
+  const c = cacheConversa.get(chave);
+  if (!nova && c && Date.now() - c.em < CONVERSATION_GAP_HOURS * 3600_000) {
+    c.em = Date.now();
+    return c.id;
+  }
+  const id = await getConversationBanco(user, canal, nova);
+  if (!nova) cacheConversa.set(chave, { id, em: Date.now() });
+  return id;
+}
+
+async function getConversationBanco(user: User, canal: Canal, nova: boolean) {
   const sql = db();
   if (!nova) {
     const [c] = await sql<{ id: string }[]>`
@@ -129,11 +143,13 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   const anexosMeta = (input.anexos ?? []).map((a) => ({ tipo: a.tipo, nome: "nome" in a ? a.nome : undefined }));
   const [hist, rota] = await Promise.all([history(conversationId), rotaPromise]);
   const taskId = randomUUID();
-  await Promise.all([
+  // Os registros são gravados enquanto o modelo já está respondendo; esperamos antes de rodar ferramentas.
+  const registros = Promise.all([
     sql`insert into messages (conversation_id, autor, conteudo, anexos) values (${conversationId}, 'user', ${input.texto}, ${json(anexosMeta)})`,
     sql`insert into tasks (id, user_id, conversation_id, canal, pedido, modelo, executor)
         values (${taskId}, ${user.id}, ${conversationId}, ${canal}, ${input.texto}, ${rota.model}, 'nuvem')`,
   ]);
+  registros.catch(() => {});
 
   const ac = track(user.id);
   const ctx: ToolContext = { user, taskId, canal, signal: ac.signal, notify: input.notify ?? (async () => {}), deviceId: input.deviceId ?? null };
@@ -222,6 +238,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
       if (text && input.onTexto) input.onTexto("\n");
 
       messages.push({ role: "assistant", content: res.content });
+      await registros;
       const results = await Promise.all(
         toolUses.map(async (tu): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
           const out = await executeTool(tu, ctx, (p) => (pendente ??= p));
@@ -257,6 +274,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   }
   if (!resposta) resposta = "Feito.";
 
+  await registros.catch(() => {});
   await sql`
     update tasks set status = ${status}, resposta = ${resposta}, fim = ${status === "aguardando_aprovacao" ? null : new Date()},
       tokens_entrada = ${tokIn}, tokens_saida = ${tokOut}, custo = ${custo},

@@ -1,5 +1,6 @@
 import { audit, db } from "../lib/db.js";
 import { cancelarFila } from "../lib/devices.js";
+import { invalidarUsuario } from "../lib/users.js";
 
 /** Tarefas em execução por usuário, para o botão de pânico interromper na hora. */
 const running = new Map<string, Set<AbortController>>();
@@ -49,6 +50,7 @@ export async function panic(userId: string, opts: { global?: boolean; pausar?: b
   const devs = await sql<{ id: string }[]>`select id from devices where user_id in ${sql(users)} and ativo`;
   cancelarFila(devs.map((d) => d.id));
   if (opts.pausar) await sql`update users set pausado = true where id in ${sql(users)}`;
+  invalidarUsuario();
   await audit(userId, "panico", opts.global ? "tenant" : "usuario", null, { aborted, pausar: !!opts.pausar });
   return aborted;
 }

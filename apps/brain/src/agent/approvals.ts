@@ -7,6 +7,16 @@ import type { Canal, User } from "./types.js";
 
 type Nivel = "confirmar" | "pin" | "pin_voz";
 
+/** Quem tem aprovação pendente (evita uma consulta ao banco em toda mensagem). */
+const comPendencia = new Set<string>();
+let carregado = false;
+async function garantirCarregado() {
+  if (carregado) return;
+  const rows = await db()<{ user_id: string }[]>`select distinct user_id from approvals where status = 'pendente' and expira_em > now()`;
+  for (const r of rows) comPendencia.add(r.user_id);
+  carregado = true;
+}
+
 export async function createApproval(a: {
   user: User;
   taskId: string;
@@ -23,6 +33,7 @@ export async function createApproval(a: {
     insert into approvals (task_id, task_step_id, user_id, nivel, ferramenta, entrada, resumo)
     values (${a.taskId}, ${a.stepId}, ${a.user.id}, ${a.nivel}, ${a.ferramenta}, ${json(a.entrada)}, ${a.resumo})
     returning id`;
+  comPendencia.add(a.user.id);
   return r!.id;
 }
 
@@ -37,11 +48,16 @@ const SIM = /^(sim|s|confirmo|confirmar|confirma|pode|pode sim|ok|manda|envia|is
 const NAO = /^(n[aã]o|n|cancela|cancelar|para|negativo|no|👎)[.! ]*$/i;
 
 export async function pendingApproval(userId: string) {
+  await garantirCarregado();
+  if (!comPendencia.has(userId)) return null;
   const sql = db();
   const [a] = await sql<{ id: string; nivel: Nivel; ferramenta: string; entrada: unknown; resumo: string; task_id: string; expira_em: Date }[]>`
     select id, nivel, ferramenta, entrada, resumo, task_id, expira_em from approvals
     where user_id = ${userId} and status = 'pendente' order by criado_em desc limit 1`;
-  if (!a) return null;
+  if (!a) {
+    comPendencia.delete(userId);
+    return null;
+  }
   if (a.expira_em < new Date()) {
     await sql`update approvals set status = 'expirada' where id = ${a.id}`;
     return null;

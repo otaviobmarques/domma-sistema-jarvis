@@ -6,7 +6,7 @@ import { panic } from "../agent/panic.js";
 import { nomeAssistente } from "../agent/prompt.js";
 import { transcribe } from "../channels/stt.js";
 import { autenticar, marcarVisto, parear, proximaAcao, receberResultado } from "../lib/devices.js";
-import { userById } from "../lib/users.js";
+import { invalidarUsuario, userById, userByIdRapido } from "../lib/users.js";
 import { audit, db } from "../lib/db.js";
 import { sintetizar, ttsConfigurado } from "../lib/tts.js";
 
@@ -65,7 +65,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     dev.post("/device/transcribe", async (req) => {
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
-      const u = await userById(req.device!.user_id);
+      const u = await userByIdRapido(req.device!.user_id);
       return { texto: await transcribe(Buffer.from(audio, "base64"), mime, u ? nomeAssistente(u) : "") };
     });
 
@@ -75,6 +75,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
       const sql = db();
       if (b.nome_assistente) {
         await sql`update users set preferencias = preferencias || ${sql.json({ nome_assistente: b.nome_assistente })} where id = ${req.device!.user_id}`;
+        invalidarUsuario(req.device!.user_id);
       }
       const u = await userById(req.device!.user_id);
       return { nome_assistente: u ? nomeAssistente(u) : b.nome_assistente ?? "Jarvis" };
@@ -97,6 +98,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     dev.post("/device/resume", async (req) => {
       await db()`update users set pausado = false where id = ${req.device!.user_id}`;
+      invalidarUsuario(req.device!.user_id);
       await audit(req.device!.user_id, "retomar", "app", null, null, req.device!.nome);
       return { ok: true };
     });
@@ -110,7 +112,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
     // Igual a /device/chat, mas devolve o texto aos poucos (NDJSON) para a voz começar antes.
     dev.post("/device/chat-stream", async (req, reply) => {
       const { texto, voz } = z.object({ texto: z.string().min(1).max(20000), voz: z.boolean().default(false) }).parse(req.body);
-      const user = await userById(req.device!.user_id);
+      const user = await userByIdRapido(req.device!.user_id);
       reply.hijack();
       const out = reply.raw;
       out.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });

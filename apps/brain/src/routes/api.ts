@@ -16,7 +16,7 @@ import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } fro
 import { applyGoogle, applyKey } from "../lib/keys.js";
 import { listarVozes, sintetizar, tts, ttsConfigurado } from "../lib/tts.js";
 import { log } from "../lib/log.js";
-import { userById } from "../lib/users.js";
+import { invalidarUsuario, userById } from "../lib/users.js";
 import { criarCodigoPareamento, isOnline, revogar } from "../lib/devices.js";
 import { reloadRoutines, runRoutine } from "../scheduler.js";
 
@@ -210,6 +210,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const sql = db();
       if (global && user.perfil === "dono") await sql`update users set pausado = false where tenant_id = ${user.tenant_id}`;
       else await sql`update users set pausado = false where id = ${user.id}`;
+      invalidarUsuario();
       await audit(user.id, "retomar", global ? "tenant" : "usuario");
       return { ok: true };
     });

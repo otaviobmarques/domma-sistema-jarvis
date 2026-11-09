@@ -19,6 +19,22 @@ export async function userByWhatsApp(numero: string): Promise<User | null> {
   return rows[0] ?? null;
 }
 
+const cacheUser = new Map<string, { u: User; ate: number }>();
+
+/** Versão com cache curto (5 s) para o caminho da voz. Mudanças feitas pelo cérebro invalidam na hora. */
+export async function userByIdRapido(id: string): Promise<User | null> {
+  const c = cacheUser.get(id);
+  if (c && c.ate > Date.now()) return c.u;
+  const u = await userById(id);
+  if (u) cacheUser.set(id, { u, ate: Date.now() + 5_000 });
+  return u;
+}
+
+export function invalidarUsuario(id?: string) {
+  if (id) cacheUser.delete(id);
+  else cacheUser.clear();
+}
+
 export async function userById(id: string): Promise<User | null> {
   const sql = db();
   const rows = await sql.unsafe<User[]>(`select ${COLS} from users where id = $1`, [id]);

@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val versao = "0.3.0"
+val versao = "0.3.1"
 
 android {
     namespace = "br.com.dommasistemas.tavinho"
@@ -14,26 +14,32 @@ android {
         applicationId = "br.com.dommasistemas.tavinho"
         minSdk = 26
         targetSdk = 35
-        versionCode = 300
+        versionCode = 301
         versionName = versao
     }
 
-    // Distribuição interna (APK fora da Play Store): chave do projeto.
+    // Assinatura do APK de distribuição: a chave NUNCA fica no repositório.
+    // Vem das variáveis TAVINHO_KEYSTORE (caminho do .jks) e TAVINHO_KEYSTORE_SENHA
+    // (no GitHub Actions: segredos ANDROID_KEYSTORE_B64 e ANDROID_KEYSTORE_SENHA).
+    val keystore = System.getenv("TAVINHO_KEYSTORE")
+    val senhaKeystore = System.getenv("TAVINHO_KEYSTORE_SENHA")
     signingConfigs {
-        create("interna") {
-            storeFile = file("../keystore/tavinho-interno.jks")
-            storePassword = "tavinho-domma"
-            keyAlias = "tavinho"
-            keyPassword = "tavinho-domma"
+        if (!keystore.isNullOrBlank() && !senhaKeystore.isNullOrBlank()) {
+            create("distribuicao") {
+                storeFile = file(keystore)
+                storePassword = senhaKeystore
+                keyAlias = System.getenv("TAVINHO_KEY_ALIAS") ?: "tavinho"
+                keyPassword = senhaKeystore
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("interna")
+            // Sem a chave, o APK release sai sem assinatura (não instala) — o CI falha antes disso.
+            signingConfigs.findByName("distribuicao")?.let { signingConfig = it }
         }
-        debug { signingConfig = signingConfigs.getByName("interna") }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

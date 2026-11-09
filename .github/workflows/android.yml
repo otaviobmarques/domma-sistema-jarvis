@@ -37,10 +37,25 @@ jobs:
         id: versao
         run: echo "versao=$(sed -n 's/^val versao = \"\(.*\)\"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
+      - name: Chave de assinatura
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_SENHA: ${{ secrets.ANDROID_KEYSTORE_SENHA }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_B64" ] || [ -z "$ANDROID_KEYSTORE_SENHA" ]; then
+            echo "::error::Faltam os segredos ANDROID_KEYSTORE_B64 e ANDROID_KEYSTORE_SENHA (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/tavinho.jks"
+          echo "TAVINHO_KEYSTORE=$RUNNER_TEMP/tavinho.jks" >> "$GITHUB_ENV"
+          echo "::add-mask::$ANDROID_KEYSTORE_SENHA"
+          echo "TAVINHO_KEYSTORE_SENHA=$ANDROID_KEYSTORE_SENHA" >> "$GITHUB_ENV"
+
       - name: Compilar APK
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify app/build/outputs/apk/release/app-release.apk
           cp app/build/outputs/apk/release/app-release.apk "Tavinho_${{ steps.versao.outputs.versao }}.apk"
 
       - name: Publicar release

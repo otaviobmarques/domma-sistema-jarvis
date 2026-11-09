@@ -16,6 +16,9 @@ pub struct Config {
     pub privacidade: bool,
     #[serde(default)]
     pub falar_respostas: bool,
+    /// Escutar "Tavinho" o tempo todo (reconhecimento local, nada sai do PC até a palavra).
+    #[serde(default)]
+    pub palavra_ativacao: bool,
 }
 
 fn caminho() -> PathBuf {

@@ -36,6 +36,30 @@ jobs:
       - name: Instalar dependências
         run: npm ci --workspace @jarvis/pc --include-workspace-root=false
 
+      # Palavra de ativação ("Tavinho"): reconhecimento de voz local com o Vosk.
+      # Os arquivos são conferidos pelo SHA-256 antes de entrar no instalador.
+      - name: Vosk (palavra de ativação)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dest = "apps/pc/src-tauri/resources/vosk"
+          $tmp = Join-Path $env:RUNNER_TEMP "vosk"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $arquivos = @(
+            @{ url = "https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-win64-0.3.45.zip"; nome = "lib.zip"; sha = "f1dcc9cca460630f81ea8f71794f69c80bed6556d2a4e6237b5785e1d2dff34b" },
+            @{ url = "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"; nome = "modelo.zip"; sha = "6e1ce909032e1afa7a88e68a3d628ecafff302bdf195befab308826c395e93b7" }
+          )
+          foreach ($a in $arquivos) {
+            $p = Join-Path $tmp $a.nome
+            Invoke-WebRequest -Uri $a.url -OutFile $p
+            $h = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            if ($h -ne $a.sha) { throw "SHA-256 inesperado para $($a.url): $h" }
+            Expand-Archive -Path $p -DestinationPath (Join-Path $tmp ($a.nome -replace '\.zip$','')) -Force
+          }
+          Get-ChildItem (Join-Path $tmp "lib/vosk-win64-0.3.45") -Filter *.dll | Copy-Item -Destination $dest
+          Copy-Item -Recurse (Join-Path $tmp "modelo/vosk-model-small-pt-0.3") (Join-Path $dest "modelo")
+          Get-ChildItem -Recurse $dest | Select-Object FullName, Length
+
       - name: Versão
         id: versao
         shell: pwsh

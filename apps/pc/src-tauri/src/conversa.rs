@@ -2,7 +2,12 @@
 //! Detecta quando a pessoa começa e termina de falar, transcreve só o trecho
 //! falado e entrega o texto para a janela. Enquanto o Jarvis fala, continua
 //! ouvindo com limiar mais alto para permitir interromper ("barge-in").
+//!
+//! Com a palavra de ativação ligada, a conversa começa "dormindo" (ESPERANDO): o áudio
+//! só passa pelo reconhecedor local (Vosk) até ouvir "Tavinho". Aí acorda já com o que
+//! foi dito depois da palavra, e volta a dormir após um tempo sem conversa.
 use crate::api::Api;
+use crate::ativacao::{Vosk, TAXA as TAXA_VOSK};
 use base64::Engine;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde_json::json;
@@ -15,6 +20,10 @@ use tauri::{AppHandle, Emitter};
 pub const OUVINDO: u8 = 0;
 pub const PAUSADO: u8 = 1; // pensando: ignora o microfone
 pub const FALANDO: u8 = 2; // Jarvis falando: só uma voz forte interrompe
+pub const ESPERANDO: u8 = 3; // dormindo: só o reconhecedor local da palavra de ativação ouve
+
+/// Sem conversa por este tempo, volta a esperar a palavra de ativação.
+const DORMIR_APOS: Duration = Duration::from_secs(20);
 
 pub struct Conversa {
     ativo: Arc<AtomicBool>,
@@ -35,12 +44,13 @@ impl Conversa {
     }
 
     /// `nova_api` cria o cliente do cérebro (lê servidor/token atuais).
-    pub fn iniciar(&self, app: AppHandle, nivel: Arc<AtomicU32>, nova_api: impl Fn() -> Api + Send + 'static) -> Result<(), String> {
+    /// `vosk`: com o reconhecedor local, a conversa começa dormindo e acorda com "Tavinho".
+    pub fn iniciar(&self, app: AppHandle, nivel: Arc<AtomicU32>, nova_api: impl Fn() -> Api + Send + 'static, vosk: Option<Arc<Vosk>>) -> Result<(), String> {
         if self.ativa() {
             return Ok(());
         }
         self.ativo.store(true, Ordering::SeqCst);
-        self.modo.store(OUVINDO, Ordering::SeqCst);
+        self.modo.store(if vosk.is_some() { ESPERANDO } else { OUVINDO }, Ordering::SeqCst);
         let (ativo, modo) = (self.ativo.clone(), self.modo.clone());
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
         let (tx_ok, rx_ok) = mpsc::channel::<Result<u32, String>>();
@@ -93,7 +103,22 @@ impl Conversa {
                 }
             }
         });
-        let taxa = rx_ok.recv_timeout(Duration::from_secs(5)).map_err(|_| "o microfone não respondeu".to_string())??;
+        let taxa = match rx_ok.recv_timeout(Duration::from_secs(5)) {
+            Ok(Ok(t)) => t,
+            Ok(Err(e)) => {
+                self.ativo.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+            Err(_) => {
+                self.ativo.store(false, Ordering::SeqCst);
+                return Err("o microfone não respondeu".into());
+            }
+        };
+        // o reconhecedor local trabalha a 16 kHz; microfones abaixo disso ficam sem palavra de ativação
+        let vosk = vosk.filter(|_| taxa >= TAXA_VOSK);
+        if vosk.is_none() && self.modo.load(Ordering::SeqCst) == ESPERANDO {
+            self.modo.store(OUVINDO, Ordering::SeqCst);
+        }
 
         // thread do detector de voz
         std::thread::spawn(move || {
@@ -107,6 +132,10 @@ impl Conversa {
             let mut silencio_ms = 0u32;
             let mut ruido = 0.008f32; // piso de ruído adaptativo
             let mut inicio = Instant::now();
+            let mut detector = vosk.as_ref().and_then(|v| v.detector().map_err(|e| log::warn!("vosk: {e}")).ok());
+            let mut recentes: Vec<f32> = Vec::new(); // últimos segundos enquanto dorme (para pegar o que veio depois da palavra)
+            let max_recentes = taxa as usize * 4;
+            let mut ultima_atividade = Instant::now();
 
             while ativo.load(Ordering::SeqCst) {
                 let Ok(bloco) = rx.recv_timeout(Duration::from_millis(200)) else { continue };
@@ -116,6 +145,49 @@ impl Conversa {
                     let rms = (q.iter().map(|x| x * x).sum::<f32>() / q.len() as f32).sqrt();
                     nivel.store((rms * 4.0).min(1.0).to_bits(), Ordering::Relaxed);
                     let m = modo.load(Ordering::SeqCst);
+                    if m == ESPERANDO {
+                        let Some(det) = detector.as_mut() else {
+                            modo.store(OUVINDO, Ordering::SeqCst);
+                            continue;
+                        };
+                        if rms < (ruido * 3.2).max(0.018) {
+                            ruido = ruido * 0.97 + rms * 0.03;
+                        }
+                        recentes.extend(&q);
+                        if recentes.len() > max_recentes {
+                            let sobra = recentes.len() - max_recentes;
+                            recentes.drain(..sobra);
+                        }
+                        let (q16, _) = reamostrar_16k(&q, taxa);
+                        let q16: Vec<i16> = q16.iter().map(|x| (x.clamp(-1.0, 1.0) * 32767.0) as i16).collect();
+                        if let Some(fim) = det.alimentar(&q16) {
+                            // acordou: o que foi falado depois da palavra já entra como início do pedido
+                            let depois16 = det.amostras().saturating_sub(fim) as f64;
+                            let depois = ((depois16 * taxa as f64 / TAXA_VOSK as f64) as usize).min(recentes.len());
+                            fala = recentes.split_off(recentes.len() - depois);
+                            recentes.clear();
+                            anteriores.clear();
+                            falando = true;
+                            voz_ms = 0;
+                            silencio_ms = 0;
+                            inicio = Instant::now();
+                            ultima_atividade = Instant::now();
+                            modo.store(OUVINDO, Ordering::SeqCst);
+                            let _ = app.emit("conversa_ativada", ());
+                        }
+                        continue;
+                    }
+                    if m != OUVINDO || falando {
+                        ultima_atividade = Instant::now();
+                    } else if vosk.is_some() && ultima_atividade.elapsed() >= DORMIR_APOS {
+                        // sem conversa há um tempo: volta a esperar "Tavinho"
+                        detector = vosk.as_ref().and_then(|v| v.detector().ok());
+                        recentes.clear();
+                        anteriores.clear();
+                        modo.store(ESPERANDO, Ordering::SeqCst);
+                        let _ = app.emit("conversa_dormiu", ());
+                        continue;
+                    }
                     if m == PAUSADO {
                         falando = false;
                         fala.clear();

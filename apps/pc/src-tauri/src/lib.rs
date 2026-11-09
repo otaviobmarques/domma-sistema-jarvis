@@ -4,6 +4,7 @@
 //! - Conexão permanente com o cérebro (long-polling) para executar ações no PC
 mod acoes;
 mod api;
+mod ativacao;
 mod audio;
 mod config;
 mod conversa;
@@ -61,7 +62,7 @@ fn alternar(app: &AppHandle) {
 
 // ------------------------------------------------------------------ comandos da janela
 #[tauri::command]
-fn estado(state: State<'_, AppState>) -> Value {
+fn estado(app: AppHandle, state: State<'_, AppState>) -> Value {
     let c = state.config.lock().unwrap();
     json!({
         "pareado": c.device_id.is_some() && c.token().is_some(),
@@ -70,6 +71,8 @@ fn estado(state: State<'_, AppState>) -> Value {
         "usuario": c.usuario,
         "privacidade": c.privacidade,
         "falar_respostas": c.falar_respostas,
+        "palavra_ativacao": c.palavra_ativacao,
+        "ativacao_instalada": ativacao_instalada(&app),
         "versao": env!("CARGO_PKG_VERSION"),
     })
 }
@@ -118,17 +121,35 @@ async fn gravar_fim(state: State<'_, AppState>) -> Result<String, String> {
     api(&state).transcrever(b64, "audio/wav").await
 }
 
+fn ativacao_instalada(app: &AppHandle) -> bool {
+    app.path().resource_dir().map(|d| d.join("vosk").join("modelo").join("final.mdl").exists()).unwrap_or(false)
+}
+
+/// `palavra`: começa dormindo e acorda quando ouvir "Tavinho" (reconhecimento local).
 #[tauri::command]
-fn conversa_iniciar(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+async fn conversa_iniciar(app: AppHandle, state: State<'_, AppState>, palavra: Option<bool>) -> Result<(), String> {
     if state.config.lock().unwrap().privacidade {
         return Err("Modo privacidade ligado: o microfone está desligado.".into());
     }
+    let vosk = if palavra.unwrap_or(false) {
+        let dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+        // carregar o modelo leva ~1 s: fora da thread da janela
+        let v = tauri::async_runtime::spawn_blocking(move || ativacao::carregar(&dir)).await.map_err(|e| e.to_string())?;
+        Some(v.ok_or("A palavra de ativação não está instalada nesta versão do app.")?)
+    } else {
+        None
+    };
     let nivel = state.gravador.lock().unwrap().nivel.clone();
     let app2 = app.clone();
-    state.conversa.iniciar(app, nivel, move || {
-        let st = app2.state::<AppState>();
-        api(&st)
-    })
+    state.conversa.iniciar(
+        app,
+        nivel,
+        move || {
+            let st = app2.state::<AppState>();
+            api(&st)
+        },
+        vosk,
+    )
 }
 
 #[tauri::command]
@@ -141,6 +162,7 @@ fn conversa_modo(state: State<'_, AppState>, modo: String) {
     let m = match modo.as_str() {
         "pausado" => conversa::PAUSADO,
         "falando" => conversa::FALANDO,
+        "esperando" => conversa::ESPERANDO,
         _ => conversa::OUVINDO,
     };
     state.conversa.modo.store(m, std::sync::atomic::Ordering::SeqCst);
@@ -186,10 +208,13 @@ fn tela_cheia(app: AppHandle, ligar: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn preferencias(state: State<'_, AppState>, privacidade: bool, falar_respostas: bool) -> Result<(), String> {
+fn preferencias(state: State<'_, AppState>, privacidade: bool, falar_respostas: bool, palavra_ativacao: Option<bool>) -> Result<(), String> {
     let mut c = state.config.lock().unwrap();
     c.privacidade = privacidade;
     c.falar_respostas = falar_respostas;
+    if let Some(p) = palavra_ativacao {
+        c.palavra_ativacao = p;
+    }
     if privacidade {
         state.conversa.parar();
         let mut g = state.gravador.lock().unwrap();

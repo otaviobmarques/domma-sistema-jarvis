@@ -1,0 +1,5 @@
+Palavra de ativação ("Tavinho") — reconhecimento de voz local com o Vosk.
+O GitHub Actions baixa aqui, na hora de gerar o instalador:
+  - libvosk.dll e dependências (vosk-win64-0.3.45, com SHA-256 conferido)
+  - modelo/  (vosk-model-small-pt-0.3, com SHA-256 conferido)
+Esses arquivos não vão para o repositório. Sem eles o app funciona, só sem a palavra de ativação.

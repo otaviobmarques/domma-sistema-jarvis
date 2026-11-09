@@ -1,2 +1,4 @@
 target
 gen
+resources/vosk/*
+!resources/vosk/LEIAME.txt

@@ -29,7 +29,8 @@ function vozPtBr() {
 }
 function voltarAOuvir() {
   window.Tavinho?.nivel(0);
-  if (emConversa) {
+  if (dormindo) orb("", dicaPalavra());
+  else if (emConversa) {
     invoke("conversa_modo", { modo: "ouvindo" });
     orb("ouvindo", "Pode falar…");
   } else orb("", "Pronto.");
@@ -117,7 +118,8 @@ let filaFechada = true;
 let falandoLoop = false;
 let idFala = 0;
 function deveFalar() {
-  return estado.falar_respostas || emConversa;
+  // com a palavra de ativação, só fala sozinho a resposta de um pedido feito por voz
+  return estado.falar_respostas || (emConversa && (!modoPalavra || pedidoPorVoz));
 }
 function falarFrase(frase) {
   if (!deveFalar() || !frase.trim()) return;
@@ -131,7 +133,7 @@ async function processarFila() {
   falandoLoop = true;
   const id = idFala;
   orb("falando");
-  if (emConversa) invoke("conversa_modo", { modo: "falando" });
+  if (emConversa && !dormindo) invoke("conversa_modo", { modo: "falando" });
   while (id === idFala) {
     const item = fila.shift();
     if (!item) {
@@ -186,6 +188,7 @@ async function enviar(texto, voz = false) {
   texto = texto.trim();
   if (!texto || ocupado) return;
   ocupado = true;
+  pedidoPorVoz = voz;
   cancelarFila();
   addMsg("eu", texto);
   orb("pensando", "Pensando…");
@@ -252,18 +255,98 @@ $("btn-mic").addEventListener("click", alternarMic);
 
 // ------------------------------------------------------------------ Modo Conversa (tempo real)
 let emConversa = false;
+let modoPalavra = false; // conversa iniciada pela palavra de ativação (escuta contínua)
+let dormindo = false; // esperando "Tavinho" (só o reconhecimento local ouve)
+let pedidoPorVoz = false;
+function dicaPalavra() {
+  return `Diga “${nomeAssistente()}” quando precisar.`;
+}
+// A palavra de ativação reconhece "Tavinho" (o modelo de voz local foi ajustado para esse nome).
+function palavraPossivel() {
+  return !!estado.ativacao_instalada && !estado.privacidade && nomeAssistente().toLowerCase() === "tavinho";
+}
+function palavraLigada() {
+  return !!estado.palavra_ativacao && palavraPossivel();
+}
+function bip() {
+  try {
+    ctxAudio ??= new AudioContext();
+    const o = ctxAudio.createOscillator();
+    const g = ctxAudio.createGain();
+    o.frequency.setValueAtTime(660, ctxAudio.currentTime);
+    o.frequency.linearRampToValueAtTime(990, ctxAudio.currentTime + 0.12);
+    g.gain.setValueAtTime(0.0001, ctxAudio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctxAudio.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctxAudio.currentTime + 0.22);
+    o.connect(g).connect(ctxAudio.destination);
+    o.start();
+    o.stop(ctxAudio.currentTime + 0.25);
+  } catch {}
+}
+function rotuloConversa() {
+  if (!emConversa) return `🎙️ Conversar com o ${nomeAssistente()}`;
+  if (modoPalavra) return dormindo ? `🎙️ Chamar o ${nomeAssistente()}` : "💤 Pôr para dormir";
+  return "⏹ Encerrar conversa";
+}
+function atualizarBotaoConversa() {
+  $("btn-conversa").classList.toggle("ativa", emConversa && !dormindo);
+  $("btn-conversa").textContent = rotuloConversa();
+}
+async function iniciarEscuta() {
+  if (emConversa || !palavraLigada()) return;
+  try {
+    await invoke("conversa_iniciar", { palavra: true });
+    emConversa = true;
+    modoPalavra = true;
+    dormindo = true;
+    atualizarBotaoConversa();
+    orb("", dicaPalavra());
+    medirNivel();
+  } catch (e) {
+    modoPalavra = false;
+    orb("erro", String(e));
+  }
+}
+async function pararEscuta() {
+  if (!emConversa) return;
+  emConversa = false;
+  modoPalavra = false;
+  dormindo = false;
+  cancelarFila();
+  await invoke("conversa_parar");
+  atualizarBotaoConversa();
+}
+function dormir() {
+  dormindo = true;
+  cancelarFila();
+  invoke("conversa_modo", { modo: "esperando" });
+  atualizarBotaoConversa();
+  orb("", dicaPalavra());
+}
 let medindo = false;
 async function medirNivel() {
   if (medindo) return;
   medindo = true;
   while (emConversa || gravando) {
-    window.Tavinho?.nivel(await invoke("nivel_mic").catch(() => 0));
+    const n = await invoke("nivel_mic").catch(() => 0);
+    window.Tavinho?.nivel(dormindo ? 0 : n);
     await new Promise((r) => setTimeout(r, 60));
   }
   window.Tavinho?.nivel(0);
   medindo = false;
 }
 async function alternarConversa() {
+  if (emConversa && modoPalavra) {
+    if (dormindo) {
+      // chamar sem falar a palavra (botão ou atalho)
+      dormindo = false;
+      invoke("conversa_modo", { modo: "ouvindo" });
+      atualizarBotaoConversa();
+      bip();
+      orb("ouvindo", "Pode falar…");
+    } else dormir();
+    return;
+  }
   if (emConversa) {
     emConversa = false;
     cancelarFila();
@@ -296,7 +379,21 @@ listen("conversa_erro", (e) => {
   orb("erro", String(e.payload));
   setTimeout(voltarAOuvir, 1500);
 });
+listen("conversa_ativada", () => {
+  dormindo = false;
+  cancelarFila();
+  atualizarBotaoConversa();
+  bip();
+  orb("ouvindo", "Oi! Pode falar…");
+});
+listen("conversa_dormiu", () => {
+  dormindo = true;
+  atualizarBotaoConversa();
+  orb("", dicaPalavra());
+});
 listen("conversa_fim", () => {
+  modoPalavra = false;
+  dormindo = false;
   if (emConversa) {
     emConversa = false;
     $("btn-conversa").classList.remove("ativa");
@@ -310,6 +407,7 @@ listen("conversa_texto", async (e) => {
   const chamada = new RegExp(`^((jarvis|${nm})\\s*)?(para|pare|chega|encerra|encerrar|tchau|pode parar)$`);
   if (chamada.test(t2) || t2 === `obrigado ${nm}` || t2 === "obrigado jarvis") {
     addMsg("eu", texto);
+    if (modoPalavra) return dormir();
     return alternarConversa();
   }
   await enviar(texto, true);
@@ -320,7 +418,10 @@ $("btn-panico").addEventListener("click", async () => {
   speechSynthesis.cancel();
   try {
     cancelarFila();
-    if (emConversa) await alternarConversa();
+    if (emConversa) {
+      if (modoPalavra) await pararEscuta();
+      else await alternarConversa();
+    }
     await invoke("panico");
     orb("erro", "⛔ Parei tudo. Clique em Retomar quando quiser voltar.");
     mostrarPausado(true);
@@ -437,6 +538,13 @@ $("btn-config").addEventListener("click", () => {
   $("val-velocidade").textContent = velocidade().toFixed(2) + "x";
   $("pref-falar").checked = !!estado.falar_respostas;
   $("pref-privacidade").checked = !!estado.privacidade;
+  $("pref-palavra").checked = !!estado.palavra_ativacao;
+  $("pref-palavra").disabled = !estado.ativacao_instalada;
+  $("info-palavra").textContent = !estado.ativacao_instalada
+    ? "Não instalada nesta versão do app."
+    : nomeAssistente().toLowerCase() !== "tavinho"
+      ? "Funciona só com o nome Tavinho."
+      : "O áudio fica no PC até você dizer “Tavinho”.";
   $("info-conta").textContent = `${estado.nome} · ${estado.usuario || ""} · ${estado.servidor} · v${estado.versao}`;
   $("dlg-config").showModal();
 });
@@ -467,8 +575,9 @@ $("btn-fechar-config").addEventListener("click", async () => {
     }
     aplicarNome();
   }
-  await invoke("preferencias", { privacidade: $("pref-privacidade").checked, falarRespostas: $("pref-falar").checked });
+  await invoke("preferencias", { privacidade: $("pref-privacidade").checked, falarRespostas: $("pref-falar").checked, palavraAtivacao: $("pref-palavra").checked });
   $("dlg-config").close();
+  if (modoPalavra && !($("pref-palavra").checked && !$("pref-privacidade").checked)) await pararEscuta();
   await carregar();
 });
 $("btn-desparear").addEventListener("click", async () => {
@@ -559,6 +668,8 @@ async function carregar() {
     aplicarNome();
     verificarConta();
     verificarAtualizacao();
+    if (palavraLigada()) iniciarEscuta();
+    else if (modoPalavra) pararEscuta();
   }
 }
 speechSynthesis.onvoiceschanged = () => {};

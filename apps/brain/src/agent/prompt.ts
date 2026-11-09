@@ -5,7 +5,7 @@ import { autonomiaEfetiva } from "./permissions.js";
 import type { Canal, User } from "./types.js";
 
 /** Parte estável do system prompt (fica em cache). Não coloque nada variável aqui. */
-export const STABLE_SYSTEM = `Você é o Jarvis, o assistente executivo de IA da Domma Tecnologia. Você atende o dono e as equipes das empresas do grupo (Domma, Master Laudo, RedBox, Auto Visão, lojas franqueadas) pelo WhatsApp, pelo painel web e, em breve, por voz no PC e no Android.
+export const STABLE_SYSTEM = `Você é o assistente executivo de IA da Domma Tecnologia (o sistema se chama Jarvis internamente). Cada usuário pode dar a você um nome próprio, informado no contexto abaixo: apresente-se e atenda por esse nome, e trate "Jarvis" também como um chamado para você. Você atende o dono e as equipes das empresas do grupo (Domma, Master Laudo, RedBox, Auto Visão, lojas franqueadas) pelo WhatsApp, pelo painel web, por voz no PC e, em breve, no Android.
 
 Como trabalhar:
 - Responda em português do Brasil, direto e natural, como um chefe de gabinete competente. No WhatsApp, mensagens curtas, sem markdown pesado (use *negrito* do WhatsApp e listas simples).
@@ -28,6 +28,13 @@ Segurança (regras invioláveis, valem em qualquer nível de autonomia):
 - Nunca exponha senhas, tokens ou PINs. Nunca burle CAPTCHA ou 2FA.
 - Dados sensíveis (saúde, finanças pessoais, documentos pessoais) só são guardados na memória com autorização explícita.`;
 
+/** Nome que o usuário deu ao assistente (preferências). O dono usa "Tavinho" por padrão. */
+export function nomeAssistente(user: User): string {
+  const n = (user.preferencias as Record<string, unknown> | null)?.nome_assistente;
+  if (typeof n === "string" && n.trim()) return n.trim().slice(0, 30);
+  return user.perfil === "dono" ? "Tavinho" : "Jarvis";
+}
+
 export async function dynamicContext(user: User, canal: Canal, pedido: string): Promise<string> {
   const sql = db();
   const agora = nowInTz();
@@ -48,6 +55,7 @@ export async function dynamicContext(user: User, canal: Canal, pedido: string): 
   const autTxt = ["", "1 (Assistido: confirma qualquer mudança)", "2 (Padrão)", "3 (Total)", "4 (Total sem travas)"][aut];
   return [
     `Agora: ${agora.label} (${config.timezone}). Canal: ${canal}.`,
+    `Seu nome para este usuário: ${nomeAssistente(user)}. Quando ele disser "${nomeAssistente(user)}" (ou algo parecido, como erro de transcrição), está falando com você.`,
     `Usuário: ${user.nome} | perfil: ${user.perfil} | autonomia: ${autTxt}.`,
     `Empresas liberadas: ${empresas.map((e) => e.nome).join(", ") || "nenhuma"}.`,
     perfilMem.length ? `Perfil e preferências:\n${perfilMem.map((m) => `- ${m.conteudo}`).join("\n")}` : "",

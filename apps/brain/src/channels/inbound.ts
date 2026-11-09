@@ -1,5 +1,6 @@
 import { handleApprovalReply } from "../agent/approvals.js";
 import { runTask, type Anexo } from "../agent/orchestrator.js";
+import { nomeAssistente } from "../agent/prompt.js";
 import { panic, runningCount } from "../agent/panic.js";
 import type { User } from "../agent/types.js";
 import { audit, db } from "../lib/db.js";
@@ -107,7 +108,7 @@ export async function handleWhatsApp(m: InboundMessage) {
 
     if (m.audio) {
       try {
-        texto = (await transcribe(m.audio.buffer, m.audio.mime)) + (texto ? `\n${texto}` : "");
+        texto = (await transcribe(m.audio.buffer, m.audio.mime, nomeAssistente(fresh))) + (texto ? `\n${texto}` : "");
         if (!texto.trim()) return void (await reply("Não consegui entender o áudio. Pode repetir?"));
       } catch (err) {
         return void (await reply(`🎙️ ${(err as Error).message}`));

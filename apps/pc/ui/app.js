@@ -239,7 +239,10 @@ listen("conversa_fim", () => {
 });
 listen("conversa_texto", async (e) => {
   const texto = e.payload.texto;
-  if (/^(jarvis,?\s*)?(para|pare|chega|encerra|tchau|obrigado,? jarvis)[.!]?$/i.test(texto.trim())) {
+  const nm = nomeAssistente().toLowerCase();
+  const t2 = texto.trim().toLowerCase().replace(/[.!?,]/g, "");
+  const chamada = new RegExp(`^((jarvis|${nm})\\s*)?(para|pare|chega|encerra|encerrar|tchau|pode parar)$`);
+  if (chamada.test(t2) || t2 === `obrigado ${nm}` || t2 === "obrigado jarvis") {
     addMsg("eu", texto);
     return alternarConversa();
   }
@@ -266,7 +269,9 @@ $("btn-historico").addEventListener("click", () => {
   $("btn-historico").textContent = $("conversa").hidden ? "Histórico" : "Fechar histórico";
   $("conversa").scrollTop = $("conversa").scrollHeight;
 });
+let nomeDoCerebro = null; // fonte da verdade: preferência salva no cérebro
 function nomeAssistente() {
+  if (nomeDoCerebro) return nomeDoCerebro;
   try {
     return localStorage.getItem("nome-assistente") || "Tavinho";
   } catch {
@@ -297,6 +302,10 @@ $("btn-retomar").addEventListener("click", async () => {
 async function verificarConta() {
   try {
     const c = await invoke("conta");
+    if (c.usuario?.nome_assistente) {
+      nomeDoCerebro = c.usuario.nome_assistente;
+      aplicarNome();
+    }
     if (c.usuario?.pausado) {
       mostrarPausado(true);
       orb("erro", "⏸ O Jarvis está pausado. Clique em Retomar para voltar.");
@@ -361,9 +370,19 @@ $("btn-config").addEventListener("click", () => {
   $("dlg-config").showModal();
 });
 $("btn-fechar-config").addEventListener("click", async () => {
+  const novoNome = $("pref-nome").value.trim() || "Tavinho";
   try {
-    localStorage.setItem("nome-assistente", $("pref-nome").value.trim() || "Tavinho");
+    localStorage.setItem("nome-assistente", novoNome);
   } catch {}
+  if (novoNome !== nomeAssistente()) {
+    try {
+      const r = await invoke("definir_nome", { nome: novoNome });
+      nomeDoCerebro = r.nome_assistente || novoNome;
+    } catch {
+      nomeDoCerebro = novoNome;
+    }
+    aplicarNome();
+  }
   await invoke("preferencias", { privacidade: $("pref-privacidade").checked, falarRespostas: $("pref-falar").checked });
   $("dlg-config").close();
   await carregar();

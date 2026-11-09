@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handleApprovalReply } from "../agent/approvals.js";
 import { runTask } from "../agent/orchestrator.js";
 import { panic } from "../agent/panic.js";
+import { nomeAssistente } from "../agent/prompt.js";
 import { transcribe } from "../channels/stt.js";
 import { autenticar, marcarVisto, parear, proximaAcao, receberResultado } from "../lib/devices.js";
 import { userById } from "../lib/users.js";
@@ -37,7 +38,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     dev.get("/device/me", async (req) => {
       const u = await userById(req.device!.user_id);
-      return { device: req.device, usuario: u ? { nome: u.nome, perfil: u.perfil, pausado: u.pausado } : null };
+      return { device: req.device, usuario: u ? { nome: u.nome, perfil: u.perfil, pausado: u.pausado, nome_assistente: nomeAssistente(u) } : null };
     });
 
     // Long-poll: devolve a próxima ação ou {acao:null} após ~25 s
@@ -64,7 +65,19 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     dev.post("/device/transcribe", async (req) => {
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
-      return { texto: await transcribe(Buffer.from(audio, "base64"), mime) };
+      const u = await userById(req.device!.user_id);
+      return { texto: await transcribe(Buffer.from(audio, "base64"), mime, u ? nomeAssistente(u) : "") };
+    });
+
+    // Preferências vindas do app (ex.: nome do assistente)
+    dev.post("/device/preferencias", async (req) => {
+      const b = z.object({ nome_assistente: z.string().trim().min(1).max(30).optional() }).parse(req.body ?? {});
+      const sql = db();
+      if (b.nome_assistente) {
+        await sql`update users set preferencias = preferencias || ${sql.json({ nome_assistente: b.nome_assistente })} where id = ${req.device!.user_id}`;
+      }
+      const u = await userById(req.device!.user_id);
+      return { nome_assistente: u ? nomeAssistente(u) : b.nome_assistente ?? "Jarvis" };
     });
 
     // Voz natural para as respostas

@@ -4,6 +4,7 @@ import { google } from "googleapis";
 import { z } from "zod";
 import { execute, handleApprovalReply, reject } from "../agent/approvals.js";
 import { runTask } from "../agent/orchestrator.js";
+import { nomeAssistente } from "../agent/prompt.js";
 import { transcribe } from "../channels/stt.js";
 import { panic, runningCount } from "../agent/panic.js";
 import type { User } from "../agent/types.js";
@@ -146,9 +147,9 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     api.post("/api/transcribe", async (req) => {
-      needUser(req);
+      const u = needUser(req);
       const { audio, mime } = z.object({ audio: z.string().min(100).max(20_000_000), mime: z.string().max(100) }).parse(req.body);
-      const texto = await transcribe(Buffer.from(audio, "base64"), mime);
+      const texto = await transcribe(Buffer.from(audio, "base64"), mime, nomeAssistente(u));
       return { texto };
     });
 

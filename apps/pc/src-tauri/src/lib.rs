@@ -187,6 +187,11 @@ async fn conta(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn definir_nome(state: State<'_, AppState>, nome: String) -> Result<Value, String> {
+    api(&state).post("/device/preferencias", json!({ "nome_assistente": nome })).await
+}
+
+#[tauri::command]
 async fn retomar(state: State<'_, AppState>) -> Result<(), String> {
     api(&state).post("/device/resume", json!({})).await.map(|_| ())
 }
@@ -293,7 +298,7 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState { config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()), conversa: conversa::Conversa::nova() })
-        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder, sintetizar, conta, retomar, verificar_atualizacao, abrir_link, sair])
+        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder, sintetizar, conta, definir_nome, retomar, verificar_atualizacao, abrir_link, sair])
         .setup(move |app| {
             // atalhos globais
             let gs = app.global_shortcut();

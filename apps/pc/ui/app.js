@@ -96,48 +96,114 @@ function falarWindows(texto, id) {
     u.lang = "pt-BR";
     const v = vozPtBr();
     if (v) u.voice = v;
-    u.rate = 1.05;
+    u.rate = Math.min(2, velocidade() + 0.1);
     u.onboundary = () => window.Tavinho?.pulso();
     u.onend = u.onerror = () => resolve();
     speechSynthesis.speak(u);
   });
 }
-async function falar(texto) {
-  if (!estado.falar_respostas && !emConversa) return voltarAOuvir();
-  pararFala();
-  const id = filaFala;
+// ---- velocidade da fala (⚙): 1.0 normal · padrão 1.15
+function velocidade() {
+  try {
+    return Number(localStorage.getItem("velocidade-fala")) || 1.15;
+  } catch {
+    return 1.15;
+  }
+}
+
+// ---- fila de fala: as frases entram conforme chegam do cérebro e são faladas em ordem
+let fila = [];
+let filaFechada = true;
+let falandoLoop = false;
+let idFala = 0;
+function deveFalar() {
+  return estado.falar_respostas || emConversa;
+}
+function falarFrase(frase) {
+  if (!deveFalar() || !frase.trim()) return;
+  fila.push({ frase, audio: null });
+  // já pede a síntese desta frase (enquanto a anterior ainda toca)
+  const item = fila[fila.length - 1];
+  item.audio = invoke("sintetizar", { texto: frase, velocidade: Math.min(1.2, velocidade()) }).catch(() => null);
+  if (!falandoLoop) processarFila();
+}
+async function processarFila() {
+  falandoLoop = true;
+  const id = idFala;
   orb("falando");
   if (emConversa) invoke("conversa_modo", { modo: "falando" });
-  const lista = frases(texto);
-  let proxima = invoke("sintetizar", { texto: lista[0] }).catch(() => null);
-  for (let i = 0; i < lista.length; i++) {
-    const r = await proxima;
-    if (id !== filaFala) return;
-    if (i + 1 < lista.length) proxima = invoke("sintetizar", { texto: lista[i + 1] }).catch(() => null);
-    if (r && r.audio) await tocar(r.audio, r.mime || "audio/mpeg", id);
-    else await falarWindows(lista[i], id);
+  while (id === idFala) {
+    const item = fila.shift();
+    if (!item) {
+      if (filaFechada) break;
+      await new Promise((r) => setTimeout(r, 40));
+      continue;
+    }
+    const r = await item.audio;
+    if (id !== idFala) break;
+    if (r && r.audio) await tocar(r.audio, r.mime || "audio/mpeg", filaFala);
+    else await falarWindows(item.frase, filaFala);
   }
-  if (id === filaFala) {
+  falandoLoop = false;
+  if (id === idFala) {
     audioAtual = null;
     window.Tavinho?.nivel(0);
     voltarAOuvir();
   }
 }
+function cancelarFila() {
+  idFala++;
+  fila = [];
+  filaFechada = true;
+  pararFala();
+}
+// compatibilidade: falar um texto inteiro de uma vez
+function falar(texto) {
+  if (!deveFalar()) return voltarAOuvir();
+  cancelarFila();
+  filaFechada = false;
+  for (const f of frases(texto)) falarFrase(f);
+  filaFechada = true;
+}
 
-// ------------------------------------------------------------------ conversa
+// ---- recebe a resposta aos poucos e fala cada frase assim que fica completa
+let bufferFala = "";
+let textoAoVivo = "";
+listen("fala_delta", (e) => {
+  const d = e.payload || "";
+  textoAoVivo += d;
+  $("legenda").textContent = textoAoVivo.replace(/\*+/g, "");
+  bufferFala += d;
+  // frase completa: termina em . ! ? … ou quebra de linha, com pelo menos ~12 caracteres
+  let m;
+  while ((m = bufferFala.match(/^([\s\S]{12,}?[.!?…:](?=\s)|[^\n]{3,}\n)/))) {
+    falarFrase(m[1].trim());
+    bufferFala = bufferFala.slice(m[1].length);
+  }
+});
+
 async function enviar(texto, voz = false) {
   texto = texto.trim();
   if (!texto || ocupado) return;
   ocupado = true;
-  pararFala();
+  cancelarFila();
   addMsg("eu", texto);
   orb("pensando", "Pensando…");
+  bufferFala = "";
+  textoAoVivo = "";
+  filaFechada = false;
   try {
-    const r = await invoke("conversar", { texto, voz });
-    const resposta = r.resposta || "Feito.";
+    const r = await invoke("conversar_stream", { texto, voz });
+    const resposta = r.resposta || textoAoVivo || "Feito.";
+    if (bufferFala.trim()) falarFrase(bufferFala.trim());
+    bufferFala = "";
+    // se nada veio em streaming (ex.: confirmação), fala a resposta inteira
+    if (!textoAoVivo.trim()) for (const f of frases(resposta)) falarFrase(f);
+    filaFechada = true;
     addMsg("jarvis", resposta);
-    falar(resposta);
+    if (!deveFalar()) voltarAOuvir();
   } catch (e) {
+    filaFechada = true;
     orb("erro", String(e));
     addMsg("jarvis", "⚠️ " + e);
     if (emConversa) setTimeout(voltarAOuvir, 1500);
@@ -200,10 +266,10 @@ async function medirNivel() {
 async function alternarConversa() {
   if (emConversa) {
     emConversa = false;
-    pararFala();
+    cancelarFila();
     await invoke("conversa_parar");
     $("btn-conversa").classList.remove("ativa");
-    $("btn-conversa").textContent = "🎙️ Conversar com o Jarvis";
+    $("btn-conversa").textContent = `🎙️ Conversar com o ${nomeAssistente()}`;
     orb("", "Conversa encerrada.");
     return;
   }
@@ -212,7 +278,7 @@ async function alternarConversa() {
     emConversa = true;
     $("btn-conversa").classList.add("ativa");
     $("btn-conversa").textContent = "⏹ Encerrar conversa";
-    orb("ouvindo", "Pode falar… (diga “Jarvis, para” para encerrar)");
+    orb("ouvindo", `Pode falar… (diga “${nomeAssistente()}, para” para encerrar)`);
     medirNivel();
   } catch (e) {
     orb("erro", String(e));
@@ -223,7 +289,7 @@ listen("conversa_ouvindo", () => emConversa && orb("ouvindo", "Ouvindo…"));
 listen("conversa_processando", () => orb("pensando", "Entendendo…"));
 listen("conversa_retomou", () => emConversa && orb("ouvindo", "Pode falar…"));
 listen("conversa_interrompeu", () => {
-  pararFala();
+  cancelarFila();
   orb("ouvindo", "Ouvindo…");
 });
 listen("conversa_erro", (e) => {
@@ -234,7 +300,7 @@ listen("conversa_fim", () => {
   if (emConversa) {
     emConversa = false;
     $("btn-conversa").classList.remove("ativa");
-    $("btn-conversa").textContent = "🎙️ Conversar com o Jarvis";
+    $("btn-conversa").textContent = `🎙️ Conversar com o ${nomeAssistente()}`;
   }
 });
 listen("conversa_texto", async (e) => {
@@ -253,7 +319,7 @@ listen("conversa_texto", async (e) => {
 $("btn-panico").addEventListener("click", async () => {
   speechSynthesis.cancel();
   try {
-    pararFala();
+    cancelarFila();
     if (emConversa) await alternarConversa();
     await invoke("panico");
     orb("erro", "⛔ Parei tudo. Clique em Retomar quando quiser voltar.");
@@ -281,6 +347,9 @@ function nomeAssistente() {
 function aplicarNome() {
   const n = nomeAssistente();
   $("nome-assistente").textContent = n.toUpperCase();
+  document.title = `${n} by Domma Tecnologia`;
+  if (!emConversa) $("btn-conversa").textContent = `🎙️ Conversar com o ${n}`;
+  $("btn-sair").textContent = `⏻ Sair do ${n}`;
   const primeiro = (estado.usuario || "").replace(/\(.*?\)/g, "").trim().split(/\s+/)[0];
   $("texto").placeholder = primeiro ? `Como posso ajudar, ${primeiro}?` : "Como posso ajudar?";
 }
@@ -308,7 +377,7 @@ async function verificarConta() {
     }
     if (c.usuario?.pausado) {
       mostrarPausado(true);
-      orb("erro", "⏸ O Jarvis está pausado. Clique em Retomar para voltar.");
+      orb("erro", `⏸ O ${nomeAssistente()} está pausado. Clique em Retomar para voltar.`);
     } else mostrarPausado(false);
   } catch {}
 }
@@ -342,7 +411,7 @@ $("btn-atualizar").addEventListener("click", async () => {
   if (urlNova) baixarAtualizacao();
 });
 $("btn-sair").addEventListener("click", async () => {
-  if (confirm("Fechar o Jarvis? Ele deixa de responder neste PC até você abrir de novo.")) await invoke("sair");
+  if (confirm(`Fechar o ${nomeAssistente()}? Ele deixa de responder neste PC até você abrir de novo.`)) await invoke("sair");
 });
 
 // ------------------------------------------------------------------ pareamento
@@ -364,12 +433,27 @@ $("form-parear").addEventListener("submit", async (e) => {
 // ------------------------------------------------------------------ configurações
 $("btn-config").addEventListener("click", () => {
   $("pref-nome").value = nomeAssistente();
+  $("pref-velocidade").value = String(velocidade());
+  $("val-velocidade").textContent = velocidade().toFixed(2) + "x";
   $("pref-falar").checked = !!estado.falar_respostas;
   $("pref-privacidade").checked = !!estado.privacidade;
   $("info-conta").textContent = `${estado.nome} · ${estado.usuario || ""} · ${estado.servidor} · v${estado.versao}`;
   $("dlg-config").showModal();
 });
+$("pref-velocidade").addEventListener("input", () => ($("val-velocidade").textContent = Number($("pref-velocidade").value).toFixed(2) + "x"));
+$("btn-testar-voz").addEventListener("click", () => {
+  try {
+    localStorage.setItem("velocidade-fala", $("pref-velocidade").value);
+  } catch {}
+  const antes = estado.falar_respostas;
+  estado.falar_respostas = true;
+  falar(`Oi, eu sou o ${nomeAssistente()}. É assim que eu falo agora.`);
+  estado.falar_respostas = antes;
+});
 $("btn-fechar-config").addEventListener("click", async () => {
+  try {
+    localStorage.setItem("velocidade-fala", $("pref-velocidade").value);
+  } catch {}
   const novoNome = $("pref-nome").value.trim() || "Tavinho";
   try {
     localStorage.setItem("nome-assistente", novoNome);
@@ -388,7 +472,7 @@ $("btn-fechar-config").addEventListener("click", async () => {
   await carregar();
 });
 $("btn-desparear").addEventListener("click", async () => {
-  if (!confirm("Desconectar este PC do Jarvis?")) return;
+  if (!confirm(`Desconectar este PC do ${nomeAssistente()}?`)) return;
   await invoke("desparear");
   $("dlg-config").close();
   await carregar();
@@ -404,8 +488,37 @@ async function alternarTelaCheia() {
 $("btn-cheia").addEventListener("click", alternarTelaCheia);
 $("tavinho").addEventListener("dblclick", alternarTelaCheia);
 
+// ------------------------------------------------------------------ câmera (visão)
+listen("capturar_camera", async () => {
+  const aviso = $("acao-atual");
+  aviso.hidden = false;
+  aviso.textContent = `📷 ${nomeAssistente()} está olhando a câmera…`;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    const v = document.createElement("video");
+    v.srcObject = stream;
+    v.muted = true;
+    await v.play();
+    await new Promise((r) => setTimeout(r, 700)); // tempo para a câmera ajustar a luz
+    const w = Math.min(1280, v.videoWidth || 1280);
+    const h = Math.round(w * ((v.videoHeight || 720) / (v.videoWidth || 1280)));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d").drawImage(v, 0, 0, w, h);
+    const dados = c.toDataURL("image/jpeg", 0.8).split(",")[1];
+    await invoke("camera_resultado", { ok: true, dados });
+  } catch (e) {
+    await invoke("camera_resultado", { ok: false, dados: "Não consegui usar a câmera: " + (e?.message || e) });
+  } finally {
+    stream?.getTracks().forEach((t) => t.stop());
+    setTimeout(() => (aviso.hidden = true), 1500);
+  }
+});
+
 // ------------------------------------------------------------------ eventos do núcleo
-const NOMES = { abrir: "abrindo", arquivos: "mexendo em arquivos", apagar: "apagando", comando: "rodando comando", janelas: "olhando as janelas", print: "olhando a tela", mouse: "usando o mouse", teclado: "digitando" };
+const NOMES = { camera: "olhando a câmera", abrir: "abrindo", arquivos: "mexendo em arquivos", apagar: "apagando", comando: "rodando comando", janelas: "olhando as janelas", print: "olhando a tela", mouse: "usando o mouse", teclado: "digitando" };
 listen("acao", (e) => {
   const a = e.payload.acao;
   $("acao-atual").hidden = false;

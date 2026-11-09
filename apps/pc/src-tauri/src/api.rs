@@ -153,6 +153,37 @@ impl Api {
         res.json().await.map_err(|e| e.to_string())
     }
 
+    /// Conversa em streaming: chama `ao_texto` a cada pedaço da resposta e devolve o evento final.
+    pub async fn chat_stream(&self, texto: &str, voz: bool, mut ao_texto: impl FnMut(&str)) -> Result<Value, String> {
+        use futures_util::StreamExt;
+        let res = self
+            .auth(self.http.post(self.url("/device/chat-stream")))
+            .json(&json!({ "texto": texto, "voz": voz }))
+            .send()
+            .await
+            .map_err(|e| format!("sem conexão com o Jarvis: {e}"))?;
+        if !res.status().is_success() {
+            return Err(erro_de(res).await);
+        }
+        let mut corpo = res.bytes_stream();
+        let mut buf: Vec<u8> = Vec::new();
+        let mut fim = json!({});
+        while let Some(pedaco) = corpo.next().await {
+            buf.extend_from_slice(&pedaco.map_err(|e| e.to_string())?);
+            while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                let linha: Vec<u8> = buf.drain(..=pos).collect();
+                let Ok(v) = serde_json::from_slice::<Value>(&linha) else { continue };
+                match v["t"].as_str() {
+                    Some("delta") => ao_texto(v["texto"].as_str().unwrap_or("")),
+                    Some("fim") => fim = v,
+                    Some("erro") => return Err(v["erro"].as_str().unwrap_or("erro").to_string()),
+                    _ => {}
+                }
+            }
+        }
+        Ok(fim)
+    }
+
     pub async fn panico(&self) -> Result<(), String> {
         let res = self.auth(self.http.post(self.url("/device/panic"))).json(&json!({})).send().await.map_err(|e| e.to_string())?;
         if !res.status().is_success() {

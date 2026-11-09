@@ -20,6 +20,8 @@ use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 struct AppState {
+    /// Foto da webcam pedida pelo cérebro: a janela captura e devolve por camera_resultado
+    camera: Mutex<Option<tokio::sync::oneshot::Sender<Result<String, String>>>>,
     config: Mutex<Config>,
     gravador: Mutex<audio::Gravador>,
     conversa: conversa::Conversa,
@@ -144,6 +146,34 @@ fn conversa_modo(state: State<'_, AppState>, modo: String) {
     state.conversa.modo.store(m, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// A janela devolve a foto (JPEG em base64) ou o erro.
+#[tauri::command]
+fn camera_resultado(state: State<'_, AppState>, ok: bool, dados: String) {
+    if let Some(tx) = state.camera.lock().unwrap().take() {
+        let _ = tx.send(if ok { Ok(dados) } else { Err(dados) });
+    }
+}
+
+async fn foto_webcam(app: &AppHandle) -> api::Resultado {
+    let st = app.state::<AppState>();
+    if st.config.lock().unwrap().privacidade {
+        return api::Resultado { id: String::new(), ok: false, texto: "Modo privacidade ligado: câmera bloqueada.".into(), imagem: None };
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    *st.camera.lock().unwrap() = Some(tx);
+    let _ = app.emit("capturar_camera", ());
+    match tokio::time::timeout(Duration::from_secs(20), rx).await {
+        Ok(Ok(Ok(b64))) => api::Resultado {
+            id: String::new(),
+            ok: true,
+            texto: "Foto da webcam.".into(),
+            imagem: Some(api::Imagem { media_type: "image/jpeg".into(), data: b64 }),
+        },
+        Ok(Ok(Err(e))) => api::Resultado { id: String::new(), ok: false, texto: e, imagem: None },
+        _ => api::Resultado { id: String::new(), ok: false, texto: "A câmera não respondeu.".into(), imagem: None },
+    }
+}
+
 #[tauri::command]
 fn nivel_mic(state: State<'_, AppState>) -> f32 {
     f32::from_bits(state.gravador.lock().unwrap().nivel.load(std::sync::atomic::Ordering::Relaxed))
@@ -177,8 +207,22 @@ async fn panico(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn sintetizar(state: State<'_, AppState>, texto: String) -> Result<Value, String> {
-    api(&state).post("/device/tts", json!({ "texto": texto })).await
+async fn sintetizar(state: State<'_, AppState>, texto: String, velocidade: Option<f32>) -> Result<Value, String> {
+    let mut corpo = json!({ "texto": texto });
+    if let Some(v) = velocidade {
+        corpo["velocidade"] = json!(v.clamp(0.7, 1.2));
+    }
+    api(&state).post("/device/tts", corpo).await
+}
+
+/// Resposta em tempo real: emite "fala_delta" a cada pedaço e devolve o resultado final.
+#[tauri::command]
+async fn conversar_stream(app: AppHandle, state: State<'_, AppState>, texto: String, voz: bool) -> Result<Value, String> {
+    let cli = api(&state);
+    cli.chat_stream(&texto, voz, |d| {
+        let _ = app.emit("fala_delta", d.to_string());
+    })
+    .await
 }
 
 #[tauri::command]
@@ -246,7 +290,13 @@ fn iniciar_conexao(app: AppHandle) {
                     primeira = false;
                     let _ = app.emit("conexao", "online");
                     let _ = app.emit("acao", json!({ "acao": acao.acao, "params": acao.params }));
-                    let r = acoes::executar(&acao).await;
+                    let r = if acao.acao == "camera" {
+                        let mut r = foto_webcam(&app).await;
+                        r.id = acao.id.clone();
+                        r
+                    } else {
+                        acoes::executar(&acao).await
+                    };
                     let _ = app.emit("acao_fim", json!({ "acao": acao.acao, "ok": r.ok }));
                     if let Err(e) = cli.resultado(&r).await {
                         log::warn!("falha ao enviar resultado: {e}");
@@ -297,8 +347,8 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(AppState { config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()), conversa: conversa::Conversa::nova() })
-        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder, sintetizar, conta, definir_nome, retomar, verificar_atualizacao, abrir_link, sair])
+        .manage(AppState { camera: Mutex::new(None), config: Mutex::new(Config::carregar()), gravador: Mutex::new(audio::Gravador::novo()), conversa: conversa::Conversa::nova() })
+        .invoke_handler(tauri::generate_handler![estado, parear, desparear, conversar, conversar_stream, camera_resultado, gravar_inicio, gravar_fim, conversa_iniciar, conversa_parar, conversa_modo, nivel_mic, tela_cheia, preferencias, panico, esconder, sintetizar, conta, definir_nome, retomar, verificar_atualizacao, abrir_link, sair])
         .setup(move |app| {
             // atalhos globais
             let gs = app.global_shortcut();
@@ -319,14 +369,14 @@ pub fn run() {
             }
 
             // bandeja
-            let abrir = MenuItem::with_id(app, "abrir", "Abrir Jarvis  (Ctrl+Espaço)", true, None::<&str>)?;
+            let abrir = MenuItem::with_id(app, "abrir", "Abrir Tavinho  (Ctrl+Espaço)", true, None::<&str>)?;
             let parar = MenuItem::with_id(app, "parar", "⛔ Parar tudo", true, None::<&str>)?;
             let sair = MenuItem::with_id(app, "sair", "Sair", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&abrir, &parar, &sep, &sair])?;
             TrayIconBuilder::with_id("jarvis")
                 .icon(app.default_window_icon().cloned().expect("ícone"))
-                .tooltip("Jarvis by Domma Tecnologia")
+                .tooltip("Tavinho by Domma Tecnologia")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, ev| match ev.id().as_ref() {

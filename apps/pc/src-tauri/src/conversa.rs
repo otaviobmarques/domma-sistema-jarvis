@@ -149,7 +149,7 @@ impl Conversa {
                         fala.extend(&q);
                         silencio_ms = if e_voz { 0 } else { silencio_ms + 30 };
                         let longa = inicio.elapsed().as_secs() >= 25;
-                        if silencio_ms >= 750 || longa {
+                        if silencio_ms >= 550 || longa {
                             falando = false;
                             voz_ms = 0;
                             let trecho = std::mem::take(&mut fala);
@@ -159,7 +159,8 @@ impl Conversa {
                                 let api = nova_api();
                                 let app2 = app.clone();
                                 let modo2 = modo.clone();
-                                let wav = para_wav(&trecho, taxa);
+                                let (amostras16, taxa16) = reamostrar_16k(&trecho, taxa);
+                                let wav = para_wav(&amostras16, taxa16);
                                 tauri::async_runtime::spawn(async move {
                                     let b64 = base64::engine::general_purpose::STANDARD.encode(wav);
                                     match api.transcrever(b64, "audio/wav").await {
@@ -196,6 +197,23 @@ fn util(t: &str) -> bool {
     }
     const RUIDO: [&str; 8] = ["legendas pela comunidade", "amara.org", "obrigado por assistir", "inscreva-se", "legendado por", "transcrição por", "música", "♪"];
     !RUIDO.iter().any(|r| l.contains(r))
+}
+
+/// Reduz para 16 kHz (o que o Whisper usa): áudio 3x menor, envio mais rápido.
+fn reamostrar_16k(a: &[f32], taxa: u32) -> (Vec<f32>, u32) {
+    if taxa <= 16000 {
+        return (a.to_vec(), taxa);
+    }
+    let passo = taxa as f64 / 16000.0;
+    let n = (a.len() as f64 / passo) as usize;
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let ini = (i as f64 * passo) as usize;
+        let fim = (((i + 1) as f64 * passo) as usize).min(a.len());
+        let janela = &a[ini..fim.max(ini + 1).min(a.len())];
+        out.push(janela.iter().sum::<f32>() / janela.len().max(1) as f32);
+    }
+    (out, 16000)
 }
 
 fn para_wav(amostras: &[f32], taxa: u32) -> Vec<u8> {

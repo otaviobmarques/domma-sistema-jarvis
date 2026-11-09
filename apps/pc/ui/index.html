@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Jarvis by Domma Tecnologia</title>
+    <title>Tavinho by Domma Tecnologia</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -17,7 +17,7 @@
         </div>
       </div>
       <h1>Conectar este PC</h1>
-      <p class="muted">No painel do Jarvis, vá em <b>Dispositivos</b> → <b>Gerar código de pareamento</b> e digite o código abaixo.</p>
+      <p class="muted">No painel (jarvis.dommasistemas.com.br), vá em <b>Dispositivos</b> → <b>Gerar código de pareamento</b> e digite o código abaixo.</p>
       <form id="form-parear">
         <label>Código
           <input id="codigo" maxlength="8" autocomplete="off" spellcheck="false" placeholder="ABC123" required />
@@ -115,6 +115,12 @@
         <input id="pref-nome" maxlength="20" placeholder="Tavinho" />
       </label>
       <label class="check"><input type="checkbox" id="pref-falar" /> Responder falando</label>
+      <label>Velocidade da fala <span id="val-velocidade" class="muted"></span>
+        <div class="linha" style="margin:0;justify-content:flex-start">
+          <input type="range" id="pref-velocidade" min="0.9" max="1.4" step="0.05" style="flex:1" />
+          <button class="btn sec mini" id="btn-testar-voz" type="button">▶ Testar</button>
+        </div>
+      </label>
       <label class="check"><input type="checkbox" id="pref-privacidade" /> Modo privacidade (microfone desligado)</label>
       <p class="muted" id="info-conta"></p>
       <div class="linha">
@@ -123,7 +129,7 @@
       </div>
       <div class="linha">
         <button class="btn sec" id="btn-desparear" type="button">Desconectar este PC</button>
-        <button class="btn sec perigo" id="btn-sair" type="button">⏻ Sair do Jarvis</button>
+        <button class="btn sec perigo" id="btn-sair" type="button">⏻ Sair do Tavinho</button>
         <button class="btn" id="btn-fechar-config" type="button">Fechar</button>
       </div>
     </dialog>

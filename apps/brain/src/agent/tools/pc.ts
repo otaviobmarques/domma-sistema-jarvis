@@ -127,3 +127,16 @@ export const pcTeclado = defineTool({
   schema: z.object({ texto: z.string().max(5000).optional(), teclas: z.array(z.string()).max(20).optional().describe("Pressionadas em ordem, depois do texto") }),
   run: (i, ctx) => noPc(ctx, "teclado", i),
 });
+
+export const pcCamera = defineTool({
+  name: "pc_camera",
+  description:
+    "Tira uma foto pela webcam do PC e mostra para você (visão computacional). Use só quando o usuário pedir para você olhar/ver algo pela câmera (ex.: \"o que estou segurando?\", \"olha isso\", \"lê esse papel\").",
+  grupo: "pc",
+  nivel: "livre",
+  perfis: [...quem],
+  muda: false,
+  disponivel: disp,
+  schema: z.object({ motivo: z.string().describe("O que você quer ver, em poucas palavras") }),
+  run: (i, ctx) => noPc(ctx, "camera", i, 30_000),
+});

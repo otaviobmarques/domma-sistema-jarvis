@@ -45,6 +45,7 @@ export const ALL_TOOLS: ToolDef[] = [
   pc.pcComando,
   pc.pcJanelas,
   pc.pcPrint,
+  pc.pcCamera,
   pc.pcMouse,
   pc.pcTeclado,
   devices.dispositivoExecutar,

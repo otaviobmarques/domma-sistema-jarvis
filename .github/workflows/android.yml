@@ -1,0 +1,57 @@
+name: App Android
+
+# Gera o APK do Tavinho para Android e publica numa Release do GitHub.
+# Dispara quando algo muda em apps/android na main, ou manualmente (Actions → Run workflow).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Versão
+        id: versao
+        run: echo "versao=$(sed -n 's/^val versao = \"\(.*\)\"/\1/p' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
+
+      - name: Compilar APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "Tavinho_${{ steps.versao.outputs.versao }}.apk"
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ steps.versao.outputs.versao }}
+          name: "Tavinho para Android v${{ steps.versao.outputs.versao }}"
+          files: apps/android/Tavinho_${{ steps.versao.outputs.versao }}.apk
+          body: |
+            App do Tavinho (Jarvis by Domma Tecnologia) para Android 8 ou mais novo.
+
+            1. No celular, baixe **Tavinho_${{ steps.versao.outputs.versao }}.apk** abaixo e abra o arquivo.
+            2. Se o Android pedir, permita "instalar apps desconhecidos" para o navegador.
+            3. Abra o Tavinho, digite o código gerado no painel (jarvis.dommasistemas.com.br → Dispositivos) e conceda as permissões pedidas.

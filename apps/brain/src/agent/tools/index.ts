@@ -1,8 +1,8 @@
 import type { ToolDef } from "../types.js";
 import * as ads from "./ads.js";
+import * as android from "./android.js";
 import * as comms from "./comms.js";
 import * as data from "./data.js";
-import * as devices from "./devices.js";
 import * as google from "./google.js";
 import * as memory from "./memory.js";
 import * as pc from "./pc.js";
@@ -48,7 +48,17 @@ export const ALL_TOOLS: ToolDef[] = [
   pc.pcCamera,
   pc.pcMouse,
   pc.pcTeclado,
-  devices.dispositivoExecutar,
+  android.androidTela,
+  android.androidPrint,
+  android.androidTocar,
+  android.androidDigitar,
+  android.androidRolar,
+  android.androidNavegar,
+  android.androidAbrir,
+  android.androidNotificacoes,
+  android.androidAlarme,
+  android.androidTimer,
+  android.androidLigar,
 ] as ToolDef[];
 
 export const TOOLS_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name, t]));

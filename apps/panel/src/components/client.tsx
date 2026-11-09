@@ -615,7 +615,7 @@ export function ParearPc() {
     <div className="space-y-3">
       {cod?.codigo && resta > 0 ? (
         <div className="rounded-xl p-4 text-center space-y-1" style={{ background: "var(--accent-soft)" }}>
-          <div className="muted text-xs">Digite este código no app do Jarvis no PC</div>
+          <div className="muted text-xs">Digite este código no app do Tavinho (PC ou celular)</div>
           <div className="text-4xl font-bold tracking-[0.3em]" style={{ fontFamily: "ui-monospace, monospace", color: "var(--accent)" }}>
             {cod.codigo}
           </div>

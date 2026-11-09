@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Tavinho</string>
+    <string name="acessibilidade_descricao">Permite que o Tavinho (by Domma Tecnologia) leia a tela e toque, digite e role por você quando você pedir. Em apps de banco e pagamento ele para e pede você.</string>
+</resources>

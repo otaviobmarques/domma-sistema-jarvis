@@ -31,7 +31,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
             </div>
           </div>
           <h1 className="text-4xl font-bold tracking-tight leading-tight">Seu assistente de IA para todas as empresas do grupo.</h1>
-          <p className="text-white/70">E-mails, agenda, campanhas, lojas e rotinas, num só lugar. Pelo WhatsApp, pelo painel e, em breve, por voz.</p>
+          <p className="text-white/70">E-mails, agenda, campanhas, lojas e rotinas, num só lugar. Pelo WhatsApp, pelo painel, no PC e no celular — inclusive por voz.</p>
         </div>
         <div className="text-xs text-white/40">© Domma Tecnologia · jarvis.dommasistemas.com.br</div>
         <div className="absolute -right-32 -bottom-32 w-[28rem] h-[28rem] rounded-full border border-white/10" />

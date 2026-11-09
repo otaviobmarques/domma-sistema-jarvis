@@ -205,6 +205,43 @@ describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definid
     assert.equal(await devices.autenticar(par!.token), null, "token revogado não funciona");
   });
 
+  it("app Android: cria alarme pelo celular e registra recurso 'android'", async () => {
+    const devices = await import("../lib/devices.js");
+    const sql = mods.db.db();
+    const { codigo } = await devices.criarCodigoPareamento(user.id);
+    const par = await devices.parear(codigo, "Celular do teste", "android", { os: "Android 15" });
+    const dev = await devices.autenticar(par!.token);
+    assert.equal(dev?.tipo, "android");
+    await devices.marcarVisto(dev!.id);
+    assert.equal(await devices.pcOnlineDoUsuario(user.id, dev!.id), null, "celular não conta como PC");
+
+    const app = (async () => {
+      const a = await devices.proximaAcao(dev!.id, 5000);
+      assert.equal(a?.acao, "alarme");
+      assert.equal(a?.params.hora, 7);
+      await devices.receberResultado(dev!.id, a!.id, { ok: true, texto: "Alarme criado para 07:00." });
+    })();
+
+    let call = 0;
+    script = (body) => {
+      if (body.max_tokens === 16) return msg([{ type: "text", text: "SIMPLES" }]);
+      if (body.output_config?.format) return msg([{ type: "text", text: JSON.stringify({ fatos: [] }) }]);
+      call++;
+      if (call === 1) {
+        assert.ok(body.tools.some((t: any) => t.name === "android_alarme"), "ferramentas android oferecidas");
+        return msg([{ type: "tool_use", id: "tu_and", name: "android_alarme", input: { hora: 7, minuto: 0 } }], "tool_use");
+      }
+      return msg([{ type: "text", text: "Alarme para as 7h criado." }]);
+    };
+    const r = await mods.orch.runTask({ user: { ...user, pausado: false }, canal: "app", texto: "me acorda às 7", deviceId: dev!.id });
+    await app;
+    assert.equal(r.resposta, "Alarme para as 7h criado.");
+    const [q] = await sql`select recurso, status from task_queue where device_id = ${dev!.id}`;
+    assert.equal(q.recurso, "android");
+    assert.equal(q.status, "concluida");
+    await devices.revogar(dev!.id, user.id);
+  });
+
   it("botão de pânico cancela pendências e pausa", async () => {
     const sql = mods.db.db();
     const [t] = await sql`insert into tasks (user_id, pedido, status) values (${user.id}, 'x', 'aguardando_aprovacao') returning id`;

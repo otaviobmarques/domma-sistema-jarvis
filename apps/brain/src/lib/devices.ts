@@ -134,19 +134,21 @@ export async function executarNoDispositivo(
   taskId: string | null,
   acao: string,
   params: Record<string, unknown>,
-  opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+  opts: { timeoutMs?: number; signal?: AbortSignal; recurso?: "pc" | "android" } = {},
 ): Promise<DeviceResult> {
-  if (!isOnline(deviceId)) return { ok: false, texto: "O PC está offline (app do Jarvis fechado ou computador desligado)." };
+  const recurso = opts.recurso ?? "pc";
+  const quem = recurso === "android" ? "O celular" : "O PC";
+  if (!isOnline(deviceId)) return { ok: false, texto: `${quem} está offline (app fechado, sem internet ou aparelho desligado).` };
   const id = randomUUID();
   await db()`
     insert into task_queue (id, task_id, device_id, recurso, acao, payload, status)
-    values (${id}, ${taskId}, ${deviceId}, 'pc', ${acao}, ${json(params)}, 'entregue')`.catch((err) => log.warn({ err }, "task_queue"));
+    values (${id}, ${taskId}, ${deviceId}, ${recurso}, ${acao}, ${json(params)}, 'entregue')`.catch((err) => log.warn({ err }, "task_queue"));
   const action: DeviceAction = { id, acao, params };
 
   const result = new Promise<DeviceResult>((resolve) => {
     const timer = setTimeout(() => {
       resultados.delete(id);
-      resolve({ ok: false, texto: "O PC não respondeu a tempo." });
+      resolve({ ok: false, texto: `${quem} não respondeu a tempo.` });
     }, opts.timeoutMs ?? 90_000);
     resultados.set(id, { resolve, timer });
     opts.signal?.addEventListener("abort", () => {
@@ -173,10 +175,14 @@ export function cancelarFila(deviceIds: string[]) {
   }
 }
 
-export async function pcOnlineDoUsuario(userId: string, preferido?: string | null) {
+export function pcOnlineDoUsuario(userId: string, preferido?: string | null) {
+  return dispositivoOnline(userId, "pc", preferido);
+}
+
+export async function dispositivoOnline(userId: string, tipo: "pc" | "android", preferido?: string | null) {
   const sql = db();
   const devs = await sql<{ id: string; nome: string }[]>`
-    select id, nome from devices where user_id = ${userId} and tipo = 'pc' and ativo order by ultimo_contato desc nulls last`;
+    select id, nome from devices where user_id = ${userId} and tipo = ${tipo} and ativo order by ultimo_contato desc nulls last`;
   if (preferido && devs.some((d) => d.id === preferido) && isOnline(preferido)) return devs.find((d) => d.id === preferido)!;
   return devs.find((d) => isOnline(d.id)) ?? null;
 }

@@ -7,7 +7,9 @@ import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-const DOWNLOAD = "https://github.com/otaviobmarques/domma-sistema-jarvis/releases/latest";
+const RELEASES = "https://github.com/otaviobmarques/domma-sistema-jarvis/releases";
+const DOWNLOAD = `${RELEASES}?q=pc-v&expanded=true`;
+const DOWNLOAD_ANDROID = `${RELEASES}?q=android-v&expanded=true`;
 
 const ACAO: Record<string, string> = {
   abrir: "Abrir",
@@ -19,6 +21,15 @@ const ACAO: Record<string, string> = {
   mouse: "Mouse",
   teclado: "Teclado",
   parar: "Parar",
+  tela: "Ler a tela",
+  tocar: "Tocar",
+  digitar: "Digitar",
+  rolar: "Rolar",
+  navegar: "Navegar",
+  notificacoes: "Notificações",
+  alarme: "Alarme",
+  timer: "Timer",
+  ligar: "Ligação",
 };
 
 export default async function Dispositivos() {
@@ -53,9 +64,20 @@ export default async function Dispositivos() {
           </ol>
           <ParearPc />
         </div>
-        <div className="card text-sm space-y-2">
-          <div className="flex items-center gap-2 font-semibold">📱 App Android (Fase 3)</div>
-          <p className="muted">Serviço de Acessibilidade, leitura de notificações, alarmes, ligações e mensagens. Em desenvolvimento.</p>
+        <div className="card space-y-3">
+          <div className="flex items-center gap-2 font-semibold">📱 App do Tavinho para Android</div>
+          <ol className="text-sm list-decimal ml-5 space-y-1">
+            <li>
+              No celular, abra{" "}
+              <a className="underline" href={DOWNLOAD_ANDROID} target="_blank" rel="noreferrer">
+                Releases do GitHub
+              </a>{" "}
+              e baixe <code>Tavinho_x.y.z.apk</code> (Android 8 ou mais novo).
+            </li>
+            <li>Abra o arquivo e permita “instalar apps desconhecidos” se o Android pedir.</li>
+            <li>No app, digite o código de pareamento (gere aqui ao lado) e conceda as permissões: microfone, notificações, acessibilidade e leitura de notificações.</li>
+          </ol>
+          <p className="muted text-xs">Com o celular pareado, o Tavinho cria alarmes e timers, faz ligações (com confirmação), lê suas notificações, abre apps e opera a tela.</p>
         </div>
       </div>
 

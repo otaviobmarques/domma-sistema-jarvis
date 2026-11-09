@@ -16,7 +16,7 @@ declare module "fastify" {
   }
 }
 
-/** API usada pelo app do Jarvis no PC (e, na Fase 3, no Android). Autenticação: Bearer <token do dispositivo>. */
+/** API usada pelos apps do PC e do Android. Autenticação: Bearer <token do dispositivo>. */
 export async function registerDeviceRoutes(app: FastifyInstance) {
   app.post("/device/pair", async (req, reply) => {
     const b = z
@@ -89,11 +89,20 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
       return { audio: r.audio.toString("base64"), mime: r.mime };
     });
 
-    dev.get("/device/versao", async () => {
+    dev.get("/device/versao", async (req) => {
+      const plataforma = req.device!.tipo === "android" ? "android" : "windows";
       const [r] = await db()<{ versao: string; url: string; notas: string | null }[]>`
-        select versao, url, notas from app_releases where plataforma = 'windows'
+        select versao, url, notas from app_releases where plataforma = ${plataforma}
         order by string_to_array(versao, '.')::int[] desc limit 1`;
       return r ?? null;
+    });
+
+    // Últimos pedidos do usuário (tela inicial do app)
+    dev.get("/device/tarefas", async (req) => {
+      const tarefas = await db()<{ pedido: string; status: string; inicio: Date }[]>`
+        select left(pedido, 140) as pedido, status, inicio from tasks
+        where user_id = ${req.device!.user_id} order by inicio desc limit 8`;
+      return { tarefas };
     });
 
     dev.post("/device/resume", async (req) => {

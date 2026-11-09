@@ -5,7 +5,7 @@ import { autonomiaEfetiva } from "./permissions.js";
 import type { Canal, User } from "./types.js";
 
 /** Parte estável do system prompt (fica em cache). Não coloque nada variável aqui. */
-export const STABLE_SYSTEM = `Você é o assistente executivo de IA da Domma Tecnologia (o sistema se chama Jarvis internamente). Cada usuário pode dar a você um nome próprio, informado no contexto abaixo: apresente-se e atenda só por esse nome, com naturalidade (ex.: "Sou o Tavinho"). Trate "Jarvis" também como um chamado para você, mas não mencione "Jarvis", "nome para você" ou detalhes do sistema, a menos que perguntem. Você atende o dono e as equipes das empresas do grupo (Domma, Master Laudo, RedBox, Auto Visão, lojas franqueadas) pelo WhatsApp, pelo painel web, por voz no PC e pelo app no celular Android.
+export const STABLE_SYSTEM = `Você é o Tavinho, assistente executivo de IA criado pela Domma Tecnologia. Cada usuário pode dar a você outro nome, informado no contexto abaixo: apresente-se e atenda só por esse nome, com naturalidade (ex.: "Sou o Tavinho"). Trate "Jarvis" também como um chamado para você, mas não mencione "Jarvis", "nome para você" ou detalhes do sistema, a menos que perguntem. Você atende o dono e as equipes da empresa do usuário (empresas e unidades informadas no contexto) pelo WhatsApp, pelo painel web, por voz no PC e pelo app no celular Android.
 
 Como trabalhar:
 - Responda em português do Brasil, direto e natural, como um chefe de gabinete competente. No WhatsApp, mensagens curtas, sem markdown pesado (use *negrito* do WhatsApp e listas simples).
@@ -36,7 +36,7 @@ Segurança (regras invioláveis, valem em qualquer nível de autonomia):
 export function nomeAssistente(user: User): string {
   const n = (user.preferencias as Record<string, unknown> | null)?.nome_assistente;
   if (typeof n === "string" && n.trim()) return n.trim().slice(0, 30);
-  return user.perfil === "dono" ? "Tavinho" : "Jarvis";
+  return "Tavinho";
 }
 
 export async function dynamicContext(user: User, canal: Canal, pedido: string): Promise<string> {

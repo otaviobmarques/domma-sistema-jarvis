@@ -8,7 +8,8 @@ import { nomeAssistente } from "../agent/prompt.js";
 import { transcribe } from "../channels/stt.js";
 import { panic, runningCount } from "../agent/panic.js";
 import type { User } from "../agent/types.js";
-import { logoutWhatsApp, sendWhatsApp, whatsappStatus } from "../channels/whatsapp.js";
+import { enviarWhatsApp } from "../channels/mensageiro.js";
+import { logoutWhatsApp, whatsappStatus } from "../channels/whatsapp.js";
 import { config } from "../lib/config.js";
 import { hashPin, safeEqual } from "../lib/crypto.js";
 import { audit, db } from "../lib/db.js";
@@ -16,6 +17,7 @@ import { GOOGLE_SCOPES, getIntegration, googleOAuthClient, saveIntegration } fro
 import { applyGoogle, applyKey } from "../lib/keys.js";
 import { listarVozes, sintetizar, tts, ttsConfigurado } from "../lib/tts.js";
 import { log } from "../lib/log.js";
+import { situacaoTenant } from "../lib/plataforma.js";
 import { invalidarUsuario, userById } from "../lib/users.js";
 import { criarCodigoPareamento, isOnline, revogar } from "../lib/devices.js";
 import { reloadRoutines, runRoutine } from "../scheduler.js";
@@ -27,7 +29,7 @@ declare module "fastify" {
 }
 
 /** O painel autentica o usuário (Supabase Auth) e chama o cérebro com o segredo compartilhado + id do usuário. */
-async function auth(req: FastifyRequest, reply: FastifyReply) {
+export async function auth(req: FastifyRequest, reply: FastifyReply) {
   const secret = String(req.headers["x-jarvis-secret"] ?? "");
   if (!config.apiSecret || !safeEqual(secret, config.apiSecret)) return reply.code(401).send({ error: "não autorizado" });
   const uid = String(req.headers["x-jarvis-user"] ?? "");
@@ -38,13 +40,20 @@ async function auth(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-const needUser = (req: FastifyRequest) => {
+export const needUser = (req: FastifyRequest) => {
   if (!req.jarvisUser) throw Object.assign(new Error("x-jarvis-user obrigatório"), { statusCode: 400 });
   return req.jarvisUser;
 };
 const needOwner = (req: FastifyRequest) => {
   const u = needUser(req);
   if (u.perfil !== "dono") throw Object.assign(new Error("apenas o dono"), { statusCode: 403 });
+  return u;
+};
+
+/** Chaves de IA, voz, Google e o WhatsApp por QR valem para toda a plataforma: só o dono da Domma mexe. */
+const needPlataforma = async (req: FastifyRequest) => {
+  const u = needOwner(req);
+  if (!(await situacaoTenant(u.tenant_id)).plataforma) throw Object.assign(new Error("apenas a administração da plataforma"), { statusCode: 403 });
   return u;
 };
 
@@ -129,11 +138,11 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     api.get("/api/tts/voices", async (req) => {
-      needOwner(req);
+      await needPlataforma(req);
       return listarVozes();
     });
     api.post("/api/tts/voice", async (req) => {
-      const u = needOwner(req);
+      const u = await needPlataforma(req);
       const { voice_id } = z.object({ voice_id: z.string().min(5).max(64) }).parse(req.body);
       await db()`update integrations set config = config || ${db().json({ voice_id })} where tenant_id = ${u.tenant_id} and tipo = 'tts'`;
       tts.voiceId = voice_id;
@@ -164,7 +173,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
     api.get("/api/whatsapp", async () => whatsappStatus());
     api.post("/api/whatsapp/logout", async (req) => {
-      const u = needOwner(req);
+      const u = await needPlataforma(req);
       await audit(u.id, "whatsapp.logout");
       await logoutWhatsApp();
       return { ok: true };
@@ -172,7 +181,7 @@ export async function registerRoutes(app: FastifyInstance) {
     api.post("/api/whatsapp/test", async (req) => {
       const u = needUser(req);
       if (!u.whatsapp) throw Object.assign(new Error("cadastre seu número primeiro"), { statusCode: 400 });
-      await sendWhatsApp(u.whatsapp, "👋 Olá! Aqui é o Jarvis. Seu número está conectado. Mande /ajuda para ver os comandos.");
+      await enviarWhatsApp(u.tenant_id, u.whatsapp, "👋 Olá! Aqui é o Tavinho. Seu número está conectado. Mande /ajuda para ver os comandos.");
       return { ok: true };
     });
 
@@ -253,7 +262,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     api.post("/api/integrations/key", async (req) => {
-      const u = needOwner(req);
+      const u = await needPlataforma(req);
       const { tipo, key } = z.object({ tipo: z.enum(["anthropic", "stt", "tts"]), key: z.string().min(20).max(500) }).parse(req.body);
       if (tipo === "tts") {
         try {
@@ -278,7 +287,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
 
     api.post("/api/integrations/google-oauth", async (req) => {
-      const u = needOwner(req);
+      const u = await needPlataforma(req);
       const b = z
         .object({ client_id: z.string().regex(/\.apps\.googleusercontent\.com$/, "ID do cliente deve terminar em .apps.googleusercontent.com"), client_secret: z.string().min(10).max(200) })
         .parse(req.body);

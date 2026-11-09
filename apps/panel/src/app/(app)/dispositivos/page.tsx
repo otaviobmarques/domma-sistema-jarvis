@@ -49,7 +49,7 @@ export default async function Dispositivos() {
       <div className="grid md:grid-cols-2 gap-4">
         <div className="card space-y-3">
           <div className="flex items-center gap-2 font-semibold">
-            <Icon name="devices" /> App do Jarvis para Windows
+            <Icon name="devices" /> App do Tavinho para Windows
           </div>
           <ol className="text-sm list-decimal ml-5 space-y-1">
             <li>
@@ -57,7 +57,7 @@ export default async function Dispositivos() {
               <a className="underline" href={DOWNLOAD} target="_blank" rel="noreferrer">
                 Releases do GitHub
               </a>{" "}
-              (arquivo <code>Jarvis_x.y.z_x64-setup.exe</code>) e instale.
+              (arquivo <code>Tavinho_x.y.z_x64-setup.exe</code>) e instale.
             </li>
             <li>Abra o app (ícone na bandeja, ou <b>Ctrl+Espaço</b>).</li>
             <li>Gere o código abaixo e digite no app.</li>

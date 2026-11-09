@@ -78,7 +78,7 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
         invalidarUsuario(req.device!.user_id);
       }
       const u = await userById(req.device!.user_id);
-      return { nome_assistente: u ? nomeAssistente(u) : b.nome_assistente ?? "Jarvis" };
+      return { nome_assistente: u ? nomeAssistente(u) : b.nome_assistente ?? "Tavinho" };
     });
 
     // Voz natural para as respostas

@@ -1,4 +1,4 @@
-//! Jarvis by Domma Tecnologia — app de PC (Fase 2).
+//! Tavinho by Domma Tecnologia — app de PC (Fase 2).
 //! - Bandeja do sistema, inicia com o Windows, Ctrl+Espaço abre a caixa de comando
 //! - Ctrl+Shift+Espaço: liga/desliga o Modo Conversa (falar em tempo real)
 //! - Conexão permanente com o cérebro (long-polling) para executar ações no PC
@@ -438,12 +438,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|w, ev| {
-            // fechar a janela só esconde: o Jarvis continua na bandeja
+            // fechar a janela só esconde: o Tavinho continua na bandeja
             if let WindowEvent::CloseRequested { api, .. } = ev {
                 api.prevent_close();
                 let _ = w.hide();
             }
         })
         .run(tauri::generate_context!())
-        .expect("erro ao iniciar o Jarvis");
+        .expect("erro ao iniciar o Tavinho");
 }

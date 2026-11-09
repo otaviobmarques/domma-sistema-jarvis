@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { config } from "../lib/config.js";
+import { franquiaEstourada, situacaoTenant } from "../lib/plataforma.js";
 import { db, json } from "../lib/db.js";
 import { log } from "../lib/log.js";
 import { createApproval, approvalInstructions } from "./approvals.js";
@@ -129,7 +130,16 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   const sql = db();
 
   if (user.pausado) {
-    return { taskId: "", resposta: "⏸️ O Jarvis está pausado para você (botão de pânico). Reative pelo painel ou mande /retomar.", aguardandoAprovacao: false, custoUsd: 0 };
+    return { taskId: "", resposta: "⏸️ O Tavinho está pausado para você (botão de pânico). Reative pelo painel ou mande /retomar.", aguardandoAprovacao: false, custoUsd: 0 };
+  }
+  // Assinatura do cliente (teste, atraso, bloqueio) e franquia de IA do mês
+  const sit = await situacaoTenant(user.tenant_id);
+  if (!sit.liberado) return { taskId: "", resposta: `⚠️ ${sit.motivo}`, aguardandoAprovacao: false, custoUsd: 0 };
+  if (!sit.plataforma) {
+    const f = await franquiaEstourada(user.tenant_id);
+    if (f.estourou) {
+      return { taskId: "", resposta: "⚠️ A franquia de uso de IA da sua empresa neste mês acabou. O responsável pela conta pode falar com a Domma para ampliar.", aguardandoAprovacao: false, custoUsd: 0 };
+    }
   }
   const limite = Number(user.limite_mensal_usd ?? 0);
   if (limite > 0 && (await monthlySpendUsd(user.id)) >= limite) {

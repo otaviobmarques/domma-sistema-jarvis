@@ -1,6 +1,6 @@
 //! Modo Conversa: microfone aberto com detecção de voz (VAD) local.
 //! Detecta quando a pessoa começa e termina de falar, transcreve só o trecho
-//! falado e entrega o texto para a janela. Enquanto o Jarvis fala, continua
+//! falado e entrega o texto para a janela. Enquanto o Tavinho fala, continua
 //! ouvindo com limiar mais alto para permitir interromper ("barge-in").
 //!
 //! Com a palavra de ativação ligada, a conversa começa "dormindo" (ESPERANDO): o áudio
@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter};
 
 pub const OUVINDO: u8 = 0;
 pub const PAUSADO: u8 = 1; // pensando: ignora o microfone
-pub const FALANDO: u8 = 2; // Jarvis falando: só uma voz forte interrompe
+pub const FALANDO: u8 = 2; // Tavinho falando: só uma voz forte interrompe
 pub const ESPERANDO: u8 = 3; // dormindo: só o reconhecedor local da palavra de ativação ouve
 
 /// Sem conversa por este tempo, volta a esperar a palavra de ativação.

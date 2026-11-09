@@ -1,11 +1,13 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { runTask } from "./agent/orchestrator.js";
 import { anthropic, costUsd } from "./agent/llm.js";
-import { sendWhatsApp, whatsappStatus } from "./channels/whatsapp.js";
+import { canalWhatsApp, enviarWhatsApp } from "./channels/mensageiro.js";
+import { situacaoTenant } from "./lib/plataforma.js";
 import { config } from "./lib/config.js";
 import { db, json } from "./lib/db.js";
 import { log } from "./lib/log.js";
 import { inQuietHours, nowInTz } from "./lib/time.js";
+import { rotinaCobranca } from "./lib/asaas.js";
 import { userById } from "./lib/users.js";
 
 const jobs = new Map<string, ScheduledTask>();
@@ -18,11 +20,11 @@ async function deliver(userId: string, texto: string, critica: boolean) {
     log.info({ userId }, "horário de silêncio: resultado salvo só no painel");
     return;
   }
-  if (!whatsappStatus().conectado) {
-    log.warn("WhatsApp desconectado: rotina não entregue");
+  if (!(await canalWhatsApp(user.tenant_id))) {
+    log.warn({ userId }, "WhatsApp desconectado: rotina não entregue");
     return;
   }
-  await sendWhatsApp(user.whatsapp, texto);
+  await enviarWhatsApp(user.tenant_id, user.whatsapp, texto);
 }
 
 export async function runRoutine(id: string) {
@@ -32,6 +34,7 @@ export async function runRoutine(id: string) {
   if (!r) return null;
   const user = await userById(r.user_id);
   if (!user || !user.ativo) return null;
+  if (!(await situacaoTenant(user.tenant_id)).liberado) return null; // conta suspensa: rotinas param
   await sql`update routines set ultima_execucao = now() where id = ${id}`;
   const res = await runTask({
     user,
@@ -117,6 +120,8 @@ export async function startScheduler() {
   await reloadRoutines();
   systemJobs.push(
     cron.schedule("30 23 * * *", () => void dailyJournal().catch((err) => log.error({ err }, "diário falhou")), { timezone: config.timezone, name: "diario" }),
+    // cobrança: bloqueia quem passou da tolerância e ajusta o valor pelo nº de usuários
+    cron.schedule("17 6 * * *", () => void rotinaCobranca().catch((err) => log.error({ err }, "rotina de cobrança falhou")), { timezone: config.timezone, name: "cobranca" }),
     cron.schedule("0 4 * * 0", () => void weeklyMaintenance().catch((err) => log.error({ err }, "manutenção falhou")), { timezone: config.timezone, name: "manutencao" }),
     cron.schedule("*/5 * * * *", () => void db()`update approvals set status = 'expirada' where status = 'pendente' and expira_em < now()`.catch(() => {}), { name: "expira" }),
   );

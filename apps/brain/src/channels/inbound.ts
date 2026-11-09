@@ -86,14 +86,16 @@ async function command(user: User, texto: string, reply: (t: string) => Promise<
 }
 
 export async function handleWhatsApp(m: InboundMessage) {
-  const user = await userByWhatsApp(m.numero);
+  const encontrado = await userByWhatsApp(m.numero);
+  // pela API oficial, só atende quem é da empresa dona do número
+  const user = encontrado && (!m.tenantId || encontrado.tenant_id === m.tenantId) ? encontrado : null;
   if (!user) {
     // Só obedece números autorizados. O resto é ignorado e registrado.
     await db()`insert into blocked_attempts (canal, remetente, conteudo) values ('whatsapp', ${m.numero}, ${m.texto.slice(0, 500)})`;
     log.info({ numero: m.numero }, "mensagem de número não cadastrado ignorada");
     return;
   }
-  const reply = (t: string) => sendWhatsApp(m.jid, t);
+  const reply = m.responder ?? ((t: string) => sendWhatsApp(m.jid, t));
 
   // /parar fura a fila: tem que agir na hora
   if (/^\/(parar|stop)\b/i.test(m.texto.trim())) {
@@ -128,7 +130,7 @@ export async function handleWhatsApp(m: InboundMessage) {
     const approvalReply = await handleApprovalReply(fresh, texto, "whatsapp");
     if (approvalReply) return void (await reply(approvalReply));
 
-    await sendTyping(m.jid);
+    await (m.digitando ? m.digitando() : sendTyping(m.jid)).catch(() => {});
     // Se a tarefa demorar, responde "Entendi, fazendo..." em até ~2 s
     let done = false;
     let sentAck = false;

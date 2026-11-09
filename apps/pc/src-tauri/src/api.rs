@@ -1,4 +1,4 @@
-//! Cliente HTTP do cérebro do Jarvis (rotas /device/*).
+//! Cliente HTTP do cérebro do Tavinho (rotas /device/*).
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -50,7 +50,7 @@ impl Api {
         Api {
             http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(600))
-                .user_agent(concat!("JarvisPC/", env!("CARGO_PKG_VERSION")))
+                .user_agent(concat!("TavinhoPC/", env!("CARGO_PKG_VERSION")))
                 .build()
                 .expect("cliente http"),
             servidor: servidor.trim_end_matches('/').to_string(),
@@ -130,7 +130,7 @@ impl Api {
             .json(&json!({ "texto": texto, "voz": voz }))
             .send()
             .await
-            .map_err(|e| format!("sem conexão com o Jarvis: {e}"))?;
+            .map_err(|e| format!("sem conexão com o Tavinho: {e}"))?;
         if !res.status().is_success() {
             return Err(erro_de(res).await);
         }
@@ -161,7 +161,7 @@ impl Api {
             .json(&json!({ "texto": texto, "voz": voz }))
             .send()
             .await
-            .map_err(|e| format!("sem conexão com o Jarvis: {e}"))?;
+            .map_err(|e| format!("sem conexão com o Tavinho: {e}"))?;
         if !res.status().is_success() {
             return Err(erro_de(res).await);
         }

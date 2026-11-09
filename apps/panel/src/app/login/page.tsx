@@ -13,8 +13,8 @@ async function entrar(formData: FormData) {
   redirect("/");
 }
 
-export default async function Login({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
-  const { erro } = await searchParams;
+export default async function Login({ searchParams }: { searchParams: Promise<{ erro?: string; novo?: string; u?: string }> }) {
+  const { erro, novo, u } = await searchParams;
   return (
     <main className="min-h-screen grid lg:grid-cols-2">
       <section
@@ -26,14 +26,14 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="" width={48} height={48} className="rounded-xl" />
             <div>
-              <div className="text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), sans-serif" }}>Jarvis</div>
+              <div className="text-3xl font-bold tracking-tight" style={{ fontFamily: "var(--font-brand), sans-serif" }}>Tavinho</div>
               <div className="text-sm text-white/60">by Domma Tecnologia</div>
             </div>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight leading-tight">Seu assistente de IA para todas as empresas do grupo.</h1>
+          <h1 className="text-4xl font-bold tracking-tight leading-tight">Um assistente de IA para a sua empresa inteira.</h1>
           <p className="text-white/70">E-mails, agenda, campanhas, lojas e rotinas, num só lugar. Pelo WhatsApp, pelo painel, no PC e no celular — inclusive por voz.</p>
         </div>
-        <div className="text-xs text-white/40">© Domma Tecnologia · jarvis.dommasistemas.com.br</div>
+        <div className="text-xs text-white/40">© Domma Tecnologia</div>
         <div className="absolute -right-32 -bottom-32 w-[28rem] h-[28rem] rounded-full border border-white/10" />
         <div className="absolute -right-12 -bottom-12 w-[18rem] h-[18rem] rounded-full border border-white/10" />
       </section>
@@ -44,24 +44,28 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
             <DommaLogo height={32} />
             <div className="flex items-center gap-3">
               <img src="/logo.svg" alt="" width={40} height={40} className="rounded-lg" />
-              <span className="text-xl font-bold tracking-tight">Jarvis</span>
+              <span className="text-xl font-bold tracking-tight">Tavinho</span>
             </div>
           </div>
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Entrar</h2>
-            <p className="muted text-sm">Acesse o painel do Jarvis</p>
+            <p className="muted text-sm">Acesse o painel do Tavinho</p>
           </div>
           <label className="block text-sm font-medium">
             Usuário ou e-mail
-            <input name="login" className="input mt-1.5" autoComplete="username" required autoFocus />
+            <input name="login" className="input mt-1.5" autoComplete="username" required autoFocus defaultValue={u ?? ""} />
           </label>
           <label className="block text-sm font-medium">
             Senha
             <input name="senha" type="password" className="input mt-1.5" autoComplete="current-password" required />
           </label>
+          {novo === "1" && <p className="text-sm rounded-lg p-3" style={{ background: "#ecfdf5", color: "#065f46" }}>Conta criada! Entre com o seu usuário e senha para começar o teste.</p>}
           {erro === "1" && <p className="text-sm text-red-600">Usuário ou senha incorretos.</p>}
-          {erro === "2" && <p className="text-sm text-red-600">Seu acesso ainda não foi liberado no Jarvis. Fale com o administrador.</p>}
+          {erro === "2" && <p className="text-sm text-red-600">Seu acesso ainda não foi liberado no Tavinho. Fale com o administrador.</p>}
           <button className="btn w-full py-2.5">Entrar</button>
+          <p className="text-sm text-center muted">
+            Ainda não usa o Tavinho? <a href="/cadastro" className="underline font-medium">Criar conta grátis</a>
+          </p>
           <div className="flex justify-center pt-2">
             <ByDomma />
           </div>

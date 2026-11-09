@@ -22,7 +22,12 @@ export interface InboundMessage {
   localizacao?: { lat: number; lng: number; nome?: string };
   grupo: boolean;
   mencionado: boolean;
-  raw: WAMessage;
+  raw?: WAMessage;
+  /** API oficial: empresa dona do número que recebeu a mensagem */
+  tenantId?: string;
+  /** como responder e mostrar "digitando" (padrão: o número por QR) */
+  responder?: (texto: string) => Promise<void>;
+  digitando?: () => Promise<void>;
 }
 
 type Handler = (m: InboundMessage) => Promise<void>;
@@ -124,7 +129,7 @@ export async function startWhatsApp() {
     version,
     auth: state,
     logger: waLogger as any,
-    browser: Browsers.ubuntu("Jarvis"),
+    browser: Browsers.ubuntu("Tavinho"),
     markOnlineOnConnect: false,
     syncFullHistory: false,
   });
@@ -200,7 +205,7 @@ async function jidFor(numero: string): Promise<string> {
 }
 
 export async function sendWhatsApp(to: string, text: string) {
-  if (!sock || !connected) throw new Error("WhatsApp do Jarvis não está conectado");
+  if (!sock || !connected) throw new Error("WhatsApp do Tavinho não está conectado");
   const jid = await jidFor(to);
   // WhatsApp corta mensagens muito longas; divide em partes
   for (let i = 0; i < text.length; i += 3500) {
@@ -213,7 +218,7 @@ export async function sendTyping(jid: string) {
 }
 
 export async function sendFile(to: string, buffer: Buffer, fileName: string, mimetype: string, caption?: string) {
-  if (!sock || !connected) throw new Error("WhatsApp do Jarvis não está conectado");
+  if (!sock || !connected) throw new Error("WhatsApp do Tavinho não está conectado");
   const jid = await jidFor(to);
   if (mimetype.startsWith("image/")) await sock.sendMessage(jid, { image: buffer, caption });
   else await sock.sendMessage(jid, { document: buffer, fileName, mimetype, caption });

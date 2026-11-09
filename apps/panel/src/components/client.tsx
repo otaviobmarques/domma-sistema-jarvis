@@ -41,7 +41,7 @@ export function PanicButton({ pausado, dono }: { pausado: boolean; dono: boolean
   if (pausado) {
     return (
       <div className="space-y-2 rounded-xl p-3" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)" }}>
-        <div className="text-xs font-medium text-amber-300">⏸ Jarvis pausado</div>
+        <div className="text-xs font-medium text-amber-300">⏸ Tavinho pausado</div>
         <button className="btn w-full" disabled={pending} onClick={() => start(async () => void (await retomar(dono)))}>
           <Icon name="play" size={14} /> Retomar
         </button>
@@ -226,7 +226,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
       <div className="flex items-center gap-3 px-5 py-3.5 border-b" style={{ borderColor: "var(--line)" }}>
         <Orb thinking={pending} size={34} />
         <div className="flex-1">
-          <div className="font-semibold text-sm">Jarvis</div>
+          <div className="font-semibold text-sm">Tavinho</div>
           <div className="text-xs muted flex items-center gap-1.5">
             <span className="dot" style={{ background: pending ? "#f59e0b" : "#10b981" }} />
             {pending ? (passos.length ? "trabalhando…" : "pensando…") : "pronto"}
@@ -311,7 +311,7 @@ export function Chat({ inicial, nome }: { inicial: Linha[]; nome?: string }) {
           type="button"
           onClick={gravar}
           disabled={pending || transcrevendo}
-          title={gravando ? "Parar e enviar" : "Falar com o Jarvis"}
+          title={gravando ? "Parar e enviar" : "Falar com o Tavinho"}
           className={`h-[38px] px-3 rounded-[0.65rem] inline-flex items-center gap-1.5 text-sm font-semibold border transition shrink-0 ${gravando ? "animate-pulse" : ""}`}
           style={
             gravando
@@ -406,7 +406,7 @@ export function WhatsAppPanel() {
           <button
             className="btn btn-ghost"
             disabled={pending}
-            onClick={() => start(async () => void (confirm("Desconectar o número do Jarvis?") && setMsg(await whatsappLogout())))}
+            onClick={() => start(async () => void (confirm("Desconectar o número do Tavinho?") && setMsg(await whatsappLogout())))}
           >
             Desconectar
           </button>
@@ -417,7 +417,7 @@ export function WhatsAppPanel() {
   return (
     <div className="space-y-2">
       <p className="text-sm">
-        No celular do <b>número dedicado do Jarvis</b>: WhatsApp → Aparelhos conectados → Conectar um aparelho → aponte para o código.
+        No celular do <b>número dedicado do Tavinho</b>: WhatsApp → Aparelhos conectados → Conectar um aparelho → aponte para o código.
       </p>
       {img ? <img src={img} alt="QR Code do WhatsApp" width={260} height={260} className="rounded bg-white p-2" /> : <p className="muted text-sm">Gerando QR Code…</p>}
       <p className="text-xs muted">⚠️ Conexão por QR Code é para testes e uso pessoal; para produção use a API Oficial da Meta.</p>
@@ -524,7 +524,7 @@ export function FonteForm() {
       <button className="btn" disabled={pending || !f.nome || !f.url} onClick={() => start(async () => setMsg(await adicionarFonte(f.nome, f.descricao, f.url)))}>
         Testar e conectar
       </button>
-      <p className="text-xs muted">Use um usuário de banco somente leitura. O Jarvis sempre consulta em modo READ ONLY.</p>
+      <p className="text-xs muted">Use um usuário de banco somente leitura. O Tavinho sempre consulta em modo READ ONLY.</p>
       <Msg m={msg} />
     </div>
   );
@@ -594,7 +594,17 @@ export function RunRoutine({ id }: { id: string }) {
 export function ActionButton({ action, label, confirmText, className = "btn btn-ghost" }: { action: () => Promise<unknown>; label: string; confirmText?: string; className?: string }) {
   const [pending, start] = useTransition();
   return (
-    <button className={className} disabled={pending} onClick={() => start(async () => void ((!confirmText || confirm(confirmText)) && (await action())))}>
+    <button
+      className={className}
+      disabled={pending}
+      onClick={() =>
+        start(async () => {
+          if (confirmText && !confirm(confirmText)) return;
+          const r = (await action()) as { ok?: boolean; msg?: string } | undefined;
+          if (r && r.ok === false && r.msg) alert(r.msg);
+        })
+      }
+    >
       {label}
     </button>
   );
@@ -666,7 +676,7 @@ export function VozSelect({ atual }: { atual: string | null }) {
           Usar esta voz
         </button>
       </div>
-      <p className="muted text-xs">A prévia é em inglês; no Jarvis a voz fala português.</p>
+      <p className="muted text-xs">A prévia é em inglês; no Tavinho a voz fala português.</p>
       <Msg m={msg} />
     </div>
   );

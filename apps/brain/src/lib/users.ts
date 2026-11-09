@@ -40,8 +40,3 @@ export async function userById(id: string): Promise<User | null> {
   const rows = await sql.unsafe<User[]>(`select ${COLS} from users where id = $1`, [id]);
   return rows[0] ?? null;
 }
-
-export async function owners(): Promise<User[]> {
-  const sql = db();
-  return sql.unsafe<User[]>(`select ${COLS} from users where perfil = 'dono' and ativo`);
-}

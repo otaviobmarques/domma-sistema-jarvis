@@ -3,16 +3,16 @@ import { executarNoDispositivo, pcOnlineDoUsuario } from "../../lib/devices.js";
 import { defineTool, type ToolContext, type ToolOutput, type User } from "../types.js";
 
 /**
- * Mãos no PC (Fase 2). Cada ferramenta vira uma ação executada pelo app do Jarvis no Windows.
+ * Mãos no PC (Fase 2). Cada ferramenta vira uma ação executada pelo app do Tavinho no Windows.
  * Ordem de preferência (seção 6): integração direta > ação local > controle de tela.
  */
 const quem = ["dono", "gestor", "operador"] as const;
 
-const disp = async (u: User): Promise<true | string> => ((await pcOnlineDoUsuario(u.id)) ? true : "Nenhum PC com o app do Jarvis está online");
+const disp = async (u: User): Promise<true | string> => ((await pcOnlineDoUsuario(u.id)) ? true : "Nenhum PC com o app do Tavinho está online");
 
 async function noPc(ctx: ToolContext, acao: string, params: Record<string, unknown>, timeoutMs?: number): Promise<string | ToolOutput> {
   const pc = await pcOnlineDoUsuario(ctx.user.id, ctx.deviceId);
-  if (!pc) return "Nenhum PC com o app do Jarvis está online agora.";
+  if (!pc) return "Nenhum PC com o app do Tavinho está online agora.";
   const r = await executarNoDispositivo(pc.id, ctx.taskId, acao, params, { timeoutMs, signal: ctx.signal });
   if (!r.ok) throw new Error(r.texto || "falhou no PC");
   return r.imagem ? { texto: r.texto, imagem: r.imagem } : r.texto;

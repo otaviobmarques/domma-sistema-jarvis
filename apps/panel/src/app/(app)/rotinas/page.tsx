@@ -28,7 +28,7 @@ export default async function Rotinas() {
 
       <section className="space-y-2">
         <h2 className="font-semibold">Rotinas (piloto automático)</h2>
-        <p className="muted text-sm">O Jarvis executa a instrução no horário (fuso de São Paulo) e manda o resultado no seu WhatsApp. Também dá para criar falando: “toda sexta às 17h me manda o resumo das campanhas”.</p>
+        <p className="muted text-sm">O Tavinho executa a instrução no horário (fuso de São Paulo) e manda o resultado no seu WhatsApp. Também dá para criar falando: “toda sexta às 17h me manda o resumo das campanhas”.</p>
         {rotinas.map((r) => (
           <div key={r.id} className="card flex gap-3 justify-between flex-wrap">
             <div className="text-sm">
@@ -60,7 +60,7 @@ export default async function Rotinas() {
                 <input type="checkbox" name="critica" /> crítica (ignora horário de silêncio)
               </label>
             </div>
-            <textarea name="instrucao" className="input" rows={2} placeholder="O que o Jarvis deve fazer" required />
+            <textarea name="instrucao" className="input" rows={2} placeholder="O que o Tavinho deve fazer" required />
             <button className="btn">Criar</button>
             <p className="muted text-xs">Exemplos: {EXEMPLOS.map((e) => `“${e.nome}” (${e.cron})`).join(" · ")}. Cron: minuto hora dia mês dia-da-semana.</p>
           </form>

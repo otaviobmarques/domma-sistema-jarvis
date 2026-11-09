@@ -7,7 +7,8 @@ import { tts } from "./tts.js";
 
 /** Chaves de serviço cadastradas no painel (criptografadas). Variáveis de ambiente têm prioridade. */
 async function tenantIds() {
-  return (await db()<{ id: string }[]>`select id from tenants order by criado_em limit 1`).map((r) => r.id);
+  // as chaves de IA, voz e do app do Google são da plataforma (Domma), valem para todos os clientes
+  return (await db()<{ id: string }[]>`select id from tenants order by plataforma desc, criado_em limit 1`).map((r) => r.id);
 }
 
 export async function hasStoredKey(tipo: "anthropic" | "stt" | "tts") {

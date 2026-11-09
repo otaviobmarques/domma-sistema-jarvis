@@ -8,7 +8,7 @@ import { trocarSenha } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 
-const NAV: (NavItem & { perfis?: string[]; grupo: string })[] = [
+const NAV: (NavItem & { perfis?: string[]; grupo: string; so?: "plataforma" | "cliente" })[] = [
   { href: "/", label: "Início", icon: "home", grupo: "Assistente" },
   { href: "/tarefas", label: "Tarefas", icon: "tasks", grupo: "Assistente" },
   { href: "/memoria", label: "Memória", icon: "brain", grupo: "Assistente" },
@@ -18,6 +18,8 @@ const NAV: (NavItem & { perfis?: string[]; grupo: string })[] = [
   { href: "/integracoes", label: "Integrações", icon: "plug", perfis: ["dono"], grupo: "Gestão" },
   { href: "/custos", label: "Custos", icon: "wallet", perfis: ["dono"], grupo: "Gestão" },
   { href: "/auditoria", label: "Auditoria", icon: "shield", perfis: ["dono"], grupo: "Gestão" },
+  { href: "/assinatura", label: "Assinatura", icon: "wallet", perfis: ["dono"], so: "cliente", grupo: "Gestão" },
+  { href: "/plataforma", label: "Plataforma", icon: "shield", perfis: ["dono"], so: "plataforma", grupo: "Gestão" },
   { href: "/configuracoes", label: "Autonomia e conta", icon: "settings", grupo: "Gestão" },
 ];
 
@@ -34,7 +36,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const { data: sessao } = await (await supabaseServer()).auth.getUser();
   const trocar = !!sessao.user?.user_metadata?.trocar_senha;
-  const itens = NAV.filter((n) => !n.perfis || n.perfis.includes(user.perfil));
+  const itens = NAV.filter(
+    (n) => (!n.perfis || n.perfis.includes(user.perfil)) && (!n.so || (n.so === "plataforma") === user.plataforma),
+  );
+  // situação da assinatura do cliente
+  const diasTeste = user.teste_ate ? Math.ceil((new Date(user.teste_ate).getTime() - Date.now()) / 86_400_000) : 0;
+  const aviso = user.plataforma
+    ? null
+    : user.tenant_status === "teste"
+      ? diasTeste > 0
+        ? { cor: "#6f5cf6", texto: `Teste grátis: ${diasTeste} ${diasTeste === 1 ? "dia restante" : "dias restantes"}.` }
+        : { cor: "#ef4444", texto: "O período de teste terminou. Assine para continuar usando o Tavinho." }
+      : user.tenant_status === "inadimplente"
+        ? { cor: "#f59e0b", texto: "Há uma fatura em atraso. Regularize para não suspender o Tavinho." }
+        : user.tenant_status === "bloqueado" || user.tenant_status === "cancelado"
+          ? { cor: "#ef4444", texto: user.tenant_status === "bloqueado" ? "O Tavinho está suspenso nesta conta." : "A assinatura desta conta foi cancelada." }
+          : null;
   const grupos = [...new Set(itens.map((i) => i.grupo))];
   const iniciais = user.nome
     .replace(/\(.*?\)/g, "")
@@ -54,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="" width={36} height={36} className="rounded-lg" />
             <div className="text-xl font-bold leading-tight tracking-tight" style={{ fontFamily: "var(--font-brand), sans-serif" }}>
-              Jarvis
+              Tavinho
             </div>
           </div>
           <ByDomma dark />
@@ -93,6 +110,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
       <main className="flex-1 min-w-0 p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
+          {aviso && (
+            <div className="mb-4 rounded-xl px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2" style={{ background: `${aviso.cor}14`, border: `1px solid ${aviso.cor}55` }}>
+              <span>{aviso.texto}</span>
+              {user.perfil === "dono" ? (
+                <a href="/assinatura" className="font-medium underline">
+                  Ver assinatura
+                </a>
+              ) : (
+                <span className="muted">Fale com o responsável pela conta.</span>
+              )}
+            </div>
+          )}
           {trocar ? (
             <div className="card max-w-md space-y-3">
               <h1 className="title">Crie sua senha</h1>

@@ -7,7 +7,7 @@ import { defineTool, type User } from "../types.js";
 /**
  * Fontes de dados externas (Domma Chat, CRM, Master Laudo, RedBox...) cadastradas
  * no painel como integração tipo "postgres": tokens = {url}, config = {nome, descricao}.
- * Sempre em transação READ ONLY com timeout — o Jarvis consulta, não altera.
+ * Sempre em transação READ ONLY com timeout — o Tavinho consulta, não altera.
  */
 const pools = new Map<string, postgres.Sql<{}>>();
 
@@ -33,7 +33,7 @@ async function pool(user: User, nome: string) {
 
 export const dadosFontes = defineTool({
   name: "dados_fontes",
-  description: "Lista as fontes de dados (bancos dos sistemas da empresa) que o Jarvis pode consultar.",
+  description: "Lista as fontes de dados (bancos dos sistemas da empresa) que o Tavinho pode consultar.",
   grupo: "dados",
   nivel: "livre",
   perfis: ["dono", "gestor", "operador"],

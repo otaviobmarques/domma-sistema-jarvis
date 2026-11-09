@@ -1,6 +1,6 @@
 name: App de PC (Windows)
 
-# Gera o instalador do Jarvis para Windows e publica numa Release do GitHub.
+# Gera o instalador do Tavinho para Windows e publica numa Release do GitHub.
 # Dispara quando algo muda em apps/pc na main, ou manualmente (Actions → Run workflow).
 on:
   push:
@@ -75,12 +75,12 @@ jobs:
           projectPath: apps/pc
           tauriScript: npx tauri
           tagName: pc-v${{ steps.versao.outputs.versao }}
-          releaseName: "Jarvis para Windows v${{ steps.versao.outputs.versao }}"
+          releaseName: "Tavinho para Windows v${{ steps.versao.outputs.versao }}"
           releaseBody: |
-            Instalador do Jarvis by Domma Tecnologia para Windows.
+            Instalador do Tavinho by Domma Tecnologia para Windows.
 
-            1. Baixe o arquivo **Jarvis_${{ steps.versao.outputs.versao }}_x64-setup.exe** abaixo e instale.
-            2. Abra o Jarvis (ícone na bandeja ou **Ctrl+Espaço**).
+            1. Baixe o arquivo **Tavinho_${{ steps.versao.outputs.versao }}_x64-setup.exe** abaixo e instale.
+            2. Abra o Tavinho (ícone na bandeja ou **Ctrl+Espaço**).
             3. No painel (jarvis.dommasistemas.com.br → Dispositivos), gere um código de pareamento e digite no app.
           releaseDraft: false
           prerelease: false

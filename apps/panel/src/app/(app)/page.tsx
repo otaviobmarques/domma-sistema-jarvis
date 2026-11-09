@@ -59,13 +59,14 @@ export default async function Inicio() {
     brain<{ conectado: boolean }>("/api/whatsapp", u.id).catch(() => null),
   ]);
 
+  // a Domma configura a plataforma; o cliente só o que é dele
   const passos = [
-    { ok: !!keys?.anthropic, label: "Conectar a inteligência (Claude)", href: "/integracoes" },
+    ...(u.plataforma ? [{ ok: !!keys?.anthropic, label: "Conectar a inteligência (Claude)", href: "/integracoes" }] : []),
     { ok: !!google[0], label: "Conectar sua conta Google", href: "/integracoes" },
     { ok: u.tem_pin, label: "Definir seu PIN de 6 dígitos", href: "/configuracoes" },
-    { ok: !!wa?.conectado, label: "Conectar o WhatsApp do Jarvis", href: "/integracoes" },
+    ...(u.plataforma ? [{ ok: !!wa?.conectado, label: "Conectar o WhatsApp do Tavinho", href: "/integracoes" }] : []),
     { ok: !!u.whatsapp, label: "Cadastrar seu número de WhatsApp", href: "/configuracoes" },
-    { ok: (meta[0]?.n ?? 0) > 0, label: "Conectar a Meta Ads", href: "/integracoes" },
+    ...(u.perfil === "dono" ? [{ ok: (meta[0]?.n ?? 0) > 0, label: "Conectar a Meta Ads", href: "/integracoes" }] : []),
   ];
   const feitos = passos.filter((p) => p.ok).length;
   const primeiroNome = u.nome.replace(/\(.*?\)/g, "").trim().split(/\s+/)[0];

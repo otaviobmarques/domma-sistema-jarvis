@@ -1,4 +1,4 @@
-// Marca da Domma Tecnologia (símbolo da onda + ponto) e assinatura "Jarvis by Domma".
+// Marca da Domma Tecnologia (símbolo da onda + ponto) e assinatura "Tavinho by Domma".
 export const DOMMA_ROXO = "#6f5cf6";
 export const DOMMA_ESCURO = "#1c1337";
 

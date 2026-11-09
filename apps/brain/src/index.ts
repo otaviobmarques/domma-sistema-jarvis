@@ -8,6 +8,7 @@ import { log } from "./lib/log.js";
 import { hasStoredKey, loadStoredKeys } from "./lib/keys.js";
 import { registerRoutes } from "./routes/api.js";
 import { registerDeviceRoutes } from "./routes/device.js";
+import { registerPlataformaRoutes } from "./routes/plataforma.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
 
 async function main() {
@@ -22,9 +23,10 @@ async function main() {
   await app.register(cors, { origin: [config.panelUrl], credentials: true });
   await registerRoutes(app);
   await registerDeviceRoutes(app);
+  await registerPlataformaRoutes(app);
   // "::" aceita IPv4 e IPv6 (a rede privada do Railway usa IPv6)
   await app.listen({ port: config.port, host: "::" });
-  log.info({ port: config.port }, "cérebro do Jarvis no ar");
+  log.info({ port: config.port }, "cérebro do Tavinho no ar");
 
   onWhatsAppMessage(handleWhatsApp);
   await startWhatsApp().catch((err) => log.error({ err }, "falha ao iniciar WhatsApp"));

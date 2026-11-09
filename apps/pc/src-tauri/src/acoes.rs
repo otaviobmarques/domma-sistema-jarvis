@@ -1,4 +1,4 @@
-//! As "mãos" do Jarvis no PC. Cada ação recebe parâmetros JSON do cérebro e
+//! As "mãos" do Tavinho no PC. Cada ação recebe parâmetros JSON do cérebro e
 //! devolve texto (e, no print, uma imagem).
 use crate::api::{Acao, Imagem, Resultado};
 use base64::Engine;
@@ -62,7 +62,7 @@ pub async fn executar(a: &Acao) -> Resultado {
             soltar_teclas();
             Ok(("Parado.".into(), None))
         }
-        outra => Err(format!("Ação desconhecida: {outra}. Atualize o app do Jarvis.")),
+        outra => Err(format!("Ação desconhecida: {outra}. Atualize o app do Tavinho.")),
     };
     match r {
         Ok((texto, imagem)) => Resultado { id: a.id.clone(), ok: true, texto, imagem },

@@ -1,17 +1,17 @@
 import { z } from "zod";
 import { audit, db } from "../../lib/db.js";
-import { sendWhatsApp, whatsappStatus } from "../../channels/whatsapp.js";
+import { enviarWhatsApp, whatsappDisponivel } from "../../channels/mensageiro.js";
 import { defineTool } from "../types.js";
 
 export const whatsappEnviar = defineTool({
   name: "whatsapp_enviar",
   description:
-    "Envia uma mensagem de WhatsApp, pelo número do Jarvis, para um terceiro (cliente, loja, funcionário). Sempre pede confirmação. Número com DDI e DDD, só dígitos (ex.: 5531999998888).",
+    "Envia uma mensagem de WhatsApp, pelo número da empresa no Tavinho, para um terceiro (cliente, loja, funcionário). Sempre pede confirmação. Número com DDI e DDD, só dígitos (ex.: 5531999998888).",
   grupo: "comunicacao",
   nivel: "confirmar",
   perfis: ["dono", "gestor", "operador"],
   muda: true,
-  disponivel: async () => (whatsappStatus().conectado ? true : "WhatsApp do Jarvis desconectado"),
+  disponivel: (u) => whatsappDisponivel(u.tenant_id),
   schema: z.object({
     numero: z.string().regex(/^\d{10,15}$/),
     nome_destinatario: z.string(),
@@ -19,7 +19,7 @@ export const whatsappEnviar = defineTool({
   }),
   resumo: (i) => `Enviar WhatsApp para ${i.nome_destinatario} (${i.numero}):\n"${i.mensagem}"`,
   async run(i, ctx) {
-    await sendWhatsApp(i.numero, i.mensagem);
+    await enviarWhatsApp(ctx.user.tenant_id, i.numero, i.mensagem);
     await audit(ctx.user.id, "whatsapp.enviar_terceiro", i.numero, null, { mensagem: i.mensagem });
     return `Mensagem enviada para ${i.nome_destinatario}.`;
   },
@@ -27,7 +27,7 @@ export const whatsappEnviar = defineTool({
 
 export const contatosBuscar = defineTool({
   name: "usuarios_listar",
-  description: "Lista os usuários cadastrados no Jarvis (nome, perfil, WhatsApp). Útil para achar o número de alguém da equipe.",
+  description: "Lista os usuários cadastrados no Tavinho (nome, perfil, WhatsApp). Útil para achar o número de alguém da equipe.",
   grupo: "usuarios",
   nivel: "livre",
   perfis: ["dono", "gestor"],

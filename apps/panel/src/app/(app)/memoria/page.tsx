@@ -45,7 +45,7 @@ export default async function Memoria({ searchParams }: { searchParams: Promise<
   return (
     <div className="space-y-4">
       <h1 className="title">Memória</h1>
-      <p className="muted text-sm">Tudo o que o Jarvis sabe, por camada e escopo. Nada de caixa-preta: veja, edite e apague.</p>
+      <p className="muted text-sm">Tudo o que o Tavinho sabe, por camada e escopo. Nada de caixa-preta: veja, edite e apague.</p>
       <div className="flex gap-2">
         <Tab id="fatos" label="Fatos (longo prazo)" />
         <Tab id="diario" label="Diário automático" />
@@ -124,7 +124,7 @@ export default async function Memoria({ searchParams }: { searchParams: Promise<
                 </div>
               </div>
             ))}
-            {!rows.length && <p className="muted text-sm">Nada por aqui ainda. A memória cresce conforme você conversa com o Jarvis.</p>}
+            {!rows.length && <p className="muted text-sm">Nada por aqui ainda. A memória cresce conforme você conversa com o Tavinho.</p>}
           </div>
         </>
       )}

@@ -16,7 +16,7 @@ export async function proxy(req: NextRequest) {
   });
   const { data } = await sb.auth.getUser();
   const path = req.nextUrl.pathname;
-  const publica = ["/login", "/privacidade", "/termos"].some((p) => path.startsWith(p));
+  const publica = ["/login", "/cadastro", "/privacidade", "/termos"].some((p) => path.startsWith(p));
   if (!data.user && !publica) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -26,5 +26,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|logo.svg|logo-512.png|oauth/|device/|api/health).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|logo.svg|logo-512.png|oauth/|device/|webhooks/|api/health).*)"],
 };

@@ -1,4 +1,4 @@
-// Janela do Jarvis no PC. Fala com o núcleo em Rust via window.__TAURI__.
+// Janela do Tavinho no PC. Fala com o núcleo em Rust via window.__TAURI__.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -587,7 +587,7 @@ $("btn-desparear").addEventListener("click", async () => {
   await carregar();
 });
 
-// ------------------------------------------------------------------ Modo Jarvis (tela cheia)
+// ------------------------------------------------------------------ Modo Tavinho (tela cheia)
 let cheia = false;
 async function alternarTelaCheia() {
   cheia = !cheia;

@@ -54,14 +54,14 @@ export default async function Usuarios() {
                from users where tenant_id = ${me.tenant_id} order by perfil, nome`,
     sql<{ id: string; nome: string }[]>`select id, nome from companies where tenant_id = ${me.tenant_id} order by nome`,
     sql<{ user_id: string; company_id: string }[]>`select uc.* from user_companies uc join users u on u.id = uc.user_id where u.tenant_id = ${me.tenant_id}`,
-    dono ? sql<any[]>`select remetente, conteudo, data from blocked_attempts order by data desc limit 10` : Promise.resolve([]),
+    dono && me.plataforma ? sql<any[]>`select remetente, conteudo, data from blocked_attempts order by data desc limit 10` : Promise.resolve([]),
   ]);
   const sel = (id: string) => links.filter((l) => l.user_id === id).map((l) => l.company_id);
 
   return (
     <div className="space-y-6">
       <h1 className="title">Usuários e permissões</h1>
-      <p className="muted text-sm">O Jarvis só obedece números de WhatsApp cadastrados aqui. Cada pessoa tem um perfil e uma lista de empresas liberadas.</p>
+      <p className="muted text-sm">O Tavinho só obedece números de WhatsApp cadastrados aqui. Cada pessoa tem um perfil e uma lista de empresas liberadas.</p>
 
       <div className="space-y-2">
         {users.map((u) => (
@@ -121,7 +121,7 @@ export default async function Usuarios() {
             <Campos empresas={empresas} sel={[]} />
             <button className="btn">Cadastrar</button>
           </UsuarioForm>
-          <p className="muted text-xs">Depois de cadastrar, peça para a pessoa mandar “oi” para o número do Jarvis. Para ela usar o painel, abra o cadastro dela e clique em “Dar acesso ao painel”.</p>
+          <p className="muted text-xs">Depois de cadastrar, peça para a pessoa mandar “oi” para o número do Tavinho. Para ela usar o painel, abra o cadastro dela e clique em “Dar acesso ao painel”.</p>
         </div>
       )}
 
@@ -151,7 +151,7 @@ export default async function Usuarios() {
 
       {dono && tentativas.length > 0 && (
         <div className="card">
-          <div className="font-medium mb-2">Números não cadastrados que tentaram falar com o Jarvis</div>
+          <div className="font-medium mb-2">Números não cadastrados que tentaram falar com o Tavinho</div>
           <ul className="text-sm space-y-1">
             {tentativas.map((t, i) => (
               <li key={i}>

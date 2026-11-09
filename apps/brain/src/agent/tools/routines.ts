@@ -7,7 +7,7 @@ import { defineTool } from "../types.js";
 export const rotinaCriar = defineTool({
   name: "rotina_criar",
   description:
-    "Cria uma rotina agendada (piloto automático). O Jarvis executa a instrução no horário e manda o resultado no WhatsApp. Cron de 5 campos no fuso America/Sao_Paulo (ex.: '0 8 * * *' = todo dia 8h; '0 17 * * 5' = sexta 17h).",
+    "Cria uma rotina agendada (piloto automático). O Tavinho executa a instrução no horário e manda o resultado no WhatsApp. Cron de 5 campos no fuso America/Sao_Paulo (ex.: '0 8 * * *' = todo dia 8h; '0 17 * * 5' = sexta 17h).",
   grupo: "rotinas",
   nivel: "livre",
   perfis: ["dono", "gestor"],

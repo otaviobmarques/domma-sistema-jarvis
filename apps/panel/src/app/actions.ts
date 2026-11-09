@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { brain } from "@/lib/brain";
 import { sql } from "@/lib/db";
@@ -215,8 +217,11 @@ export async function usuarioSalvar(form: FormData): Promise<Result> {
       userId = r!.id;
     }
     await sql`delete from user_companies where user_id = ${userId}`;
-    for (const c of empresas) await sql`insert into user_companies (user_id, company_id) values (${userId}, ${c}) on conflict do nothing`;
+    // só empresas do próprio cliente
+    for (const c of empresas)
+      await sql`insert into user_companies (user_id, company_id) select ${userId}, id from companies where id = ${c} and tenant_id = ${u.tenant_id} on conflict do nothing`;
     await sql`insert into audit_log (user_id, acao, alvo, depois) values (${u.id}, ${id ? "usuario.editar" : "usuario.criar"}, ${userId}, ${sql.json({ nome, perfil, whatsapp, empresas })})`;
+    if (!id) await sincronizarAssinatura(u.id);
     revalidatePath("/usuarios");
     return { ok: true, msg: "Salvo." };
   } catch (e) {
@@ -229,6 +234,7 @@ export async function usuarioAtivo(id: string, ativo: boolean) {
   if (id === u.id) return;
   await sql`update users set ativo = ${ativo} where id = ${id} and tenant_id = ${u.tenant_id}`;
   await sql`insert into audit_log (user_id, acao, alvo) values (${u.id}, ${ativo ? "usuario.ativar" : "usuario.desativar"}, ${id})`;
+  await sincronizarAssinatura(u.id);
   revalidatePath("/usuarios");
 }
 
@@ -448,4 +454,126 @@ export async function sintetizarFala(texto: string): Promise<{ audio?: string; m
   } catch (e) {
     return { erro: (e as Error).message };
   }
+}
+
+
+// ------------------------------------------------------------------ Tavinho como produto (Fase 4)
+/** Cadastro público de um novo cliente (não exige login). */
+export async function cadastrar(form: FormData): Promise<Result> {
+  if (String(form.get("site") ?? "")) return { ok: false, msg: "Não foi possível concluir." }; // campo-isca para robôs
+  if (form.get("aceite") !== "on") return { ok: false, msg: "Para continuar, aceite os Termos de Uso e a Política de Privacidade." };
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0]!.trim() || h.get("x-real-ip") || "?";
+  let login = "";
+  try {
+    const r = await brain<{ login: string }>("/api/cadastro", null, {
+      body: {
+        empresa: String(form.get("empresa") ?? ""),
+        documento: String(form.get("documento") ?? ""),
+        responsavel: String(form.get("responsavel") ?? ""),
+        email: String(form.get("email") ?? ""),
+        whatsapp: String(form.get("whatsapp") ?? ""),
+        login: String(form.get("login") ?? ""),
+        senha: String(form.get("senha") ?? ""),
+        ip,
+      },
+    });
+    login = r.login;
+  } catch (e) {
+    return fail(e);
+  }
+  redirect(`/login?novo=1&u=${encodeURIComponent(login)}`);
+}
+
+/** Avisa o cérebro para recalcular o valor da assinatura (usuários ativos × preço). */
+async function sincronizarAssinatura(userId: string) {
+  await brain("/api/assinatura/sincronizar", userId, { method: "POST" }).catch(() => {});
+}
+
+export async function assinar(): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/assinatura/assinar", u.id, { method: "POST" });
+    revalidatePath("/assinatura");
+    return { ok: true, msg: "Assinatura criada. A fatura chega no seu e-mail e aparece aqui embaixo." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function plataformaConfig(form: FormData): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  const num = (k: string) => Number(String(form.get(k) ?? "").replace(",", "."));
+  try {
+    await brain("/api/plataforma/config", u.id, {
+      body: { preco_usuario: num("preco_usuario"), dias_teste: Math.round(num("dias_teste")), limite_ia_usuario_usd: num("limite_ia_usuario_usd"), tolerancia_dias: Math.round(num("tolerancia_dias")) },
+    });
+    revalidatePath("/plataforma");
+    return { ok: true, msg: "Salvo. Vale para novos cadastros e para o próximo ajuste das assinaturas." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function plataformaAsaas(form: FormData): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/plataforma/asaas", u.id, { body: { api_key: String(form.get("api_key") ?? ""), sandbox: form.get("sandbox") === "on" } });
+    revalidatePath("/plataforma");
+    return { ok: true, msg: "Chave do Asaas conferida e salva." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function plataformaCliente(id: string, acao: string, extra: { dias?: number; preco?: number | null } = {}): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain(`/api/plataforma/clientes/${id}`, u.id, { body: { acao, ...extra } });
+    revalidatePath("/plataforma");
+    return { ok: true, msg: "Feito." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function plataformaPreco(form: FormData): Promise<Result> {
+  const v = String(form.get("preco") ?? "").trim().replace(",", ".");
+  return plataformaCliente(String(form.get("id")), "preco", { preco: v ? Number(v) : null });
+}
+
+// ------------------------------------------------------------------ WhatsApp oficial (API da Meta) do cliente
+export async function whatsappCloudSalvar(form: FormData): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    const r = await brain<{ numero: string; nome: string | null }>("/api/integrations/whatsapp-cloud", u.id, {
+      body: {
+        phone_number_id: String(form.get("phone_number_id") ?? "").trim(),
+        access_token: String(form.get("access_token") ?? "").trim(),
+        app_secret: String(form.get("app_secret") ?? "").trim(),
+        template: String(form.get("template") ?? "").trim() || null,
+      },
+    });
+    revalidatePath("/integracoes");
+    return { ok: true, msg: `Conectado: ${r.nome ?? ""} +${r.numero}. Agora configure o webhook na Meta (passo 3).` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function whatsappCloudTeste(): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  try {
+    await brain("/api/integrations/whatsapp-cloud/teste", u.id, { method: "POST" });
+    return { ok: true, msg: "Mensagem de teste enviada para o seu WhatsApp." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function whatsappCloudDesconectar(): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  await brain("/api/integrations/whatsapp-cloud/desconectar", u.id, { method: "POST" });
+  revalidatePath("/integracoes");
+  return { ok: true };
 }

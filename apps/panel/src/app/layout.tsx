@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const poppins = Poppins({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-brand", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Jarvis by Domma Tecnologia",
+  title: "Tavinho by Domma Tecnologia",
   description: "Painel do assistente de IA da Domma Tecnologia",
 };
 

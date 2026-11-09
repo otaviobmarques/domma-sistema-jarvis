@@ -1,4 +1,5 @@
-import { ContaForm, PinForm } from "@/components/client";
+import { trocarSenha } from "@/app/actions";
+import { ContaForm, FormWithResult, PinForm } from "@/components/client";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 
@@ -63,6 +64,15 @@ export default async function Configuracoes() {
         <div className="font-medium">PIN de confirmação</div>
         <p className="muted text-sm">Usado para ações sensíveis (orçamento de anúncio, exclusões). Nunca é guardado em texto.</p>
         <PinForm userId={u.id} label={u.tem_pin ? "Trocar PIN" : "Definir PIN"} />
+      </div>
+
+      <div className="card space-y-2">
+        <div className="font-medium">Senha do painel</div>
+        <FormWithResult action={trocarSenha} className="flex flex-wrap gap-2">
+          <input name="nova" type="password" className="input max-w-[14rem]" placeholder="Nova senha" autoComplete="new-password" required />
+          <input name="confirmar" type="password" className="input max-w-[14rem]" placeholder="Repita a nova senha" autoComplete="new-password" required />
+          <button className="btn btn-ghost">Trocar senha</button>
+        </FormWithResult>
       </div>
     </div>
   );

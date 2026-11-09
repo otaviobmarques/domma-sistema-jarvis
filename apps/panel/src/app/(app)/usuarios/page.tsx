@@ -1,5 +1,5 @@
-import { usuarioAtivo } from "@/app/actions";
-import { ActionButton, PinForm, UsuarioForm } from "@/components/client";
+import { painelAcesso, painelRemoverAcesso, usuarioAtivo } from "@/app/actions";
+import { ActionButton, FormWithResult, PinForm, UsuarioForm } from "@/components/client";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 
@@ -49,7 +49,8 @@ export default async function Usuarios() {
   const me = await requireUser(["dono", "gestor"]);
   const dono = me.perfil === "dono";
   const [users, empresas, links, tentativas] = await Promise.all([
-    sql<any[]>`select id, nome, perfil, whatsapp, email, ativo, autonomia, pausado, pin_hash is not null as tem_pin, auth_user_id is not null as tem_login
+    sql<any[]>`select id, nome, perfil, whatsapp, email, ativo, autonomia, pausado, pin_hash is not null as tem_pin, auth_user_id is not null as tem_login,
+               (select a.email from auth.users a where a.id = users.auth_user_id) as login_email
                from users where tenant_id = ${me.tenant_id} order by perfil, nome`,
     sql<{ id: string; nome: string }[]>`select id, nome from companies where tenant_id = ${me.tenant_id} order by nome`,
     sql<{ user_id: string; company_id: string }[]>`select uc.* from user_companies uc join users u on u.id = uc.user_id where u.tenant_id = ${me.tenant_id}`,
@@ -80,6 +81,29 @@ export default async function Usuarios() {
                   <button className="btn btn-ghost">Salvar</button>
                 </UsuarioForm>
                 <PinForm userId={u.id} label={u.tem_pin ? "Trocar PIN" : "Definir PIN"} />
+                {u.id !== me.id && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer muted">
+                      {u.tem_login ? `Acesso ao painel: ${String(u.login_email ?? "").replace(/@jarvis\.local$/, "")}` : "Dar acesso ao painel"}
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <FormWithResult action={painelAcesso} className="flex flex-wrap gap-2 items-center">
+                        <input type="hidden" name="id" value={u.id} />
+                        <input
+                          name="login"
+                          className="input max-w-[14rem]"
+                          placeholder="login (ex.: maria) ou e-mail"
+                          defaultValue={u.login_email ? String(u.login_email).replace(/@jarvis\.local$/, "") : (u.email ?? "")}
+                          required
+                        />
+                        <input name="senha" type="password" className="input max-w-[14rem]" placeholder="senha provisória" autoComplete="new-password" required />
+                        <button className="btn btn-ghost">{u.tem_login ? "Redefinir senha" : "Criar acesso"}</button>
+                      </FormWithResult>
+                      <p className="muted text-xs">A pessoa entra em jarvis.dommasistemas.com.br com esse login e a senha provisória, e é obrigada a criar a própria senha. Ela vê só as próprias tarefas e as empresas liberadas.</p>
+                      {u.tem_login && <ActionButton label="Remover acesso ao painel" confirmText={`Remover o acesso de ${u.nome} ao painel?`} action={painelRemoverAcesso.bind(null, u.id)} />}
+                    </div>
+                  </details>
+                )}
               </>
             ) : (
               <div className="muted text-sm">
@@ -97,7 +121,7 @@ export default async function Usuarios() {
             <Campos empresas={empresas} sel={[]} />
             <button className="btn">Cadastrar</button>
           </UsuarioForm>
-          <p className="muted text-xs">Depois de cadastrar, peça para a pessoa mandar “oi” para o número do Jarvis.</p>
+          <p className="muted text-xs">Depois de cadastrar, peça para a pessoa mandar “oi” para o número do Jarvis. Para ela usar o painel, abra o cadastro dela e clique em “Dar acesso ao painel”.</p>
         </div>
       )}
 

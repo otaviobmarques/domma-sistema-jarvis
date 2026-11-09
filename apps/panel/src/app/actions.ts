@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { brain } from "@/lib/brain";
 import { sql } from "@/lib/db";
+import { loginToEmail, supabaseServer } from "@/lib/supabase";
 
 type Result = { ok: boolean; msg?: string };
 const fail = (e: unknown): Result => ({ ok: false, msg: (e as Error).message });
@@ -229,6 +230,79 @@ export async function usuarioAtivo(id: string, ativo: boolean) {
   await sql`update users set ativo = ${ativo} where id = ${id} and tenant_id = ${u.tenant_id}`;
   await sql`insert into audit_log (user_id, acao, alvo) values (${u.id}, ${ativo ? "usuario.ativar" : "usuario.desativar"}, ${id})`;
   revalidatePath("/usuarios");
+}
+
+// ------------------------------------------------------------------ acesso ao painel (equipe)
+const senhaForte = (s: string) => s.length >= 8 && /[a-zA-Z]/.test(s) && /\d/.test(s);
+
+/** Dono cria (ou redefine) o login de painel de alguém da equipe. */
+export async function painelAcesso(form: FormData): Promise<Result> {
+  const u = await requireUser(["dono"]);
+  const userId = String(form.get("id") ?? "");
+  const login = String(form.get("login") ?? "").trim().toLowerCase();
+  const senha = String(form.get("senha") ?? "");
+  if (!/^[a-z0-9._@-]{3,80}$/.test(login)) return { ok: false, msg: "Login: use letras, números, ponto ou um e-mail." };
+  if (!senhaForte(senha)) return { ok: false, msg: "Senha provisória: pelo menos 8 caracteres, com letras e números." };
+  const email = loginToEmail(login);
+  try {
+    const [alvo] = await sql<{ id: string; nome: string; auth_user_id: string | null }[]>`
+      select id, nome, auth_user_id from users where id = ${userId} and tenant_id = ${u.tenant_id}`;
+    if (!alvo) return { ok: false, msg: "Usuário não encontrado." };
+    const [outro] = await sql<{ id: string }[]>`select id from auth.users where lower(email) = ${email} and id is distinct from ${alvo.auth_user_id}::uuid`;
+    if (outro) return { ok: false, msg: "Esse login já é usado por outra pessoa." };
+    if (alvo.auth_user_id) {
+      await sql`update auth.users set email = ${email}, encrypted_password = extensions.crypt(${senha}, extensions.gen_salt('bf')),
+                  raw_user_meta_data = raw_user_meta_data || ${sql.json({ trocar_senha: true })}, updated_at = now()
+                where id = ${alvo.auth_user_id}`;
+      await sql`update auth.identities set identity_data = identity_data || ${sql.json({ email })}, updated_at = now() where user_id = ${alvo.auth_user_id} and provider = 'email'`;
+    } else {
+      await sql.begin(async (tx) => {
+        const [au] = await tx<{ id: string }[]>`
+          insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_new, recovery_token)
+          values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', ${email},
+            extensions.crypt(${senha}, extensions.gen_salt('bf')), now(), ${tx.json({ provider: "email", providers: ["email"] })},
+            ${tx.json({ nome: alvo.nome, trocar_senha: true })}, now(), now(), '', '', '', '')
+          returning id`;
+        await tx`
+          insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+          values (gen_random_uuid(), ${au!.id}, ${au!.id}, ${tx.json({ sub: au!.id, email, email_verified: true })}, 'email', now(), now(), now())`;
+        await tx`update users set auth_user_id = ${au!.id} where id = ${alvo.id}`;
+      });
+    }
+    await sql`insert into audit_log (user_id, acao, alvo, depois) values (${u.id}, 'usuario.acesso_painel', ${alvo.id}, ${sql.json({ login })})`;
+    revalidatePath("/usuarios");
+    return { ok: true, msg: `Acesso criado. Login: ${login} — a pessoa troca a senha no primeiro acesso.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function painelRemoverAcesso(userId: string) {
+  const u = await requireUser(["dono"]);
+  if (userId === u.id) return;
+  const [alvo] = await sql<{ auth_user_id: string | null }[]>`select auth_user_id from users where id = ${userId} and tenant_id = ${u.tenant_id}`;
+  if (!alvo?.auth_user_id) return;
+  await sql`update users set auth_user_id = null where id = ${userId}`;
+  await sql`delete from auth.users where id = ${alvo.auth_user_id}`; // apaga sessões e identidades em cascata
+  await sql`insert into audit_log (user_id, acao, alvo) values (${u.id}, 'usuario.remover_acesso_painel', ${userId})`;
+  revalidatePath("/usuarios");
+}
+
+/** Qualquer pessoa troca a própria senha (obrigatório no primeiro acesso). */
+export async function trocarSenha(form: FormData): Promise<Result> {
+  const u = await requireUser();
+  const nova = String(form.get("nova") ?? "");
+  if (nova !== String(form.get("confirmar") ?? "")) return { ok: false, msg: "As senhas não conferem." };
+  if (!senhaForte(nova)) return { ok: false, msg: "Use pelo menos 8 caracteres, com letras e números." };
+  const sb = await supabaseServer();
+  const { data } = await sb.auth.getUser();
+  if (!data.user) return { ok: false, msg: "Sessão expirada. Entre de novo." };
+  const { error } = await sb.auth.updateUser({ password: nova, data: { trocar_senha: false } });
+  if (error) return { ok: false, msg: error.message.includes("different") ? "A nova senha precisa ser diferente da atual." : error.message };
+  await sql`insert into audit_log (user_id, acao) values (${u.id}, 'conta.trocar_senha')`;
+  revalidatePath("/", "layout");
+  return { ok: true, msg: "Senha trocada." };
 }
 
 export async function definirPin(userId: string, pin: string): Promise<Result> {

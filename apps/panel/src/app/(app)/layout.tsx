@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { PanicButton } from "@/components/PanicButton";
 import { ByDomma } from "@/components/brand";
 import { Icon } from "@/components/icons";
+import { FormWithResult } from "@/components/client";
 import { NavLinks, type NavItem } from "@/components/nav";
+import { trocarSenha } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 
@@ -14,7 +16,7 @@ const NAV: (NavItem & { perfis?: string[]; grupo: string })[] = [
   { href: "/dispositivos", label: "Dispositivos", icon: "devices", grupo: "Assistente" },
   { href: "/usuarios", label: "Usuários e permissões", icon: "users", perfis: ["dono", "gestor"], grupo: "Gestão" },
   { href: "/integracoes", label: "Integrações", icon: "plug", perfis: ["dono"], grupo: "Gestão" },
-  { href: "/custos", label: "Custos", icon: "wallet", perfis: ["dono", "gestor"], grupo: "Gestão" },
+  { href: "/custos", label: "Custos", icon: "wallet", perfis: ["dono"], grupo: "Gestão" },
   { href: "/auditoria", label: "Auditoria", icon: "shield", perfis: ["dono"], grupo: "Gestão" },
   { href: "/configuracoes", label: "Autonomia e conta", icon: "settings", grupo: "Gestão" },
 ];
@@ -30,6 +32,8 @@ async function sair() {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  const { data: sessao } = await (await supabaseServer()).auth.getUser();
+  const trocar = !!sessao.user?.user_metadata?.trocar_senha;
   const itens = NAV.filter((n) => !n.perfis || n.perfis.includes(user.perfil));
   const grupos = [...new Set(itens.map((i) => i.grupo))];
   const iniciais = user.nome
@@ -88,7 +92,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
       <main className="flex-1 min-w-0 p-4 md:p-8">
-        <div className="max-w-6xl mx-auto">{children}</div>
+        <div className="max-w-6xl mx-auto">
+          {trocar ? (
+            <div className="card max-w-md space-y-3">
+              <h1 className="title">Crie sua senha</h1>
+              <p className="muted text-sm">Este é o seu primeiro acesso com uma senha provisória. Escolha uma senha só sua (pelo menos 8 caracteres, com letras e números).</p>
+              <FormWithResult action={trocarSenha} className="space-y-2">
+                <input name="nova" type="password" className="input" placeholder="Nova senha" autoComplete="new-password" required />
+                <input name="confirmar" type="password" className="input" placeholder="Repita a nova senha" autoComplete="new-password" required />
+                <button className="btn">Salvar senha</button>
+              </FormWithResult>
+            </div>
+          ) : (
+            children
+          )}
+        </div>
       </main>
     </div>
   );

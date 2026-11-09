@@ -21,7 +21,10 @@ export default async function Memoria({ searchParams }: { searchParams: Promise<
         : await sql<any[]>`
           select * from memories
           where tenant_id = ${u.tenant_id} and substituida_por is null
-            and ((escopo = 'pessoal' and user_id = ${u.id}) or escopo <> 'pessoal')
+            and ((escopo = 'pessoal' and user_id = ${u.id})
+              or escopo = 'equipe'
+              or (escopo = 'empresa' and (${u.perfil} = 'dono' or company_id is null
+                  or company_id in (select company_id from user_companies where user_id = ${u.id}))))
             and (${sp.tipo ?? null}::text is null or tipo = ${sp.tipo ?? null})
             and (${sp.escopo ?? null}::text is null or escopo = ${sp.escopo ?? null})
           order by atualizado_em desc limit 300`

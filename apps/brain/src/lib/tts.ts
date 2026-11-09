@@ -5,7 +5,8 @@
 export const tts = {
   apiKey: process.env.ELEVENLABS_API_KEY ?? "",
   voiceId: process.env.ELEVENLABS_VOICE_ID ?? "",
-  model: process.env.ELEVENLABS_MODEL ?? "eleven_turbo_v2_5",
+  // flash: menor atraso (~75 ms) com boa naturalidade em português
+  model: process.env.ELEVENLABS_MODEL ?? "eleven_flash_v2_5",
 };
 
 const API = "https://api.elevenlabs.io/v1";
@@ -27,17 +28,17 @@ function falavel(t: string) {
     .slice(0, 2500);
 }
 
-export async function sintetizar(texto: string): Promise<{ audio: Buffer; mime: string }> {
+export async function sintetizar(texto: string, velocidade = 1.12): Promise<{ audio: Buffer; mime: string }> {
   if (!tts.apiKey) throw new Error("Voz natural não configurada (Integrações → Voz natural).");
   const voz = tts.voiceId || (await vozPadrao());
-  const res = await fetch(`${API}/text-to-speech/${voz}?output_format=mp3_44100_64`, {
+  const res = await fetch(`${API}/text-to-speech/${voz}?output_format=mp3_44100_64&optimize_streaming_latency=3`, {
     method: "POST",
     headers: { "xi-api-key": tts.apiKey, "content-type": "application/json", accept: "audio/mpeg" },
     body: JSON.stringify({
       text: falavel(texto),
       model_id: tts.model,
       language_code: "pt",
-      voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true, speed: 1.05 },
+      voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true, speed: Math.min(1.2, Math.max(0.7, velocidade)) },
     }),
   });
   if (!res.ok) throw new Error(`Voz: ${res.status} ${(await res.text()).slice(0, 200)}`);

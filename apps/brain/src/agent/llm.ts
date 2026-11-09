@@ -37,6 +37,16 @@ export async function createMessage(params: CreateParams, signal?: AbortSignal) 
   return anthropic.beta.messages.create({ ...params, ...extra }, { signal });
 }
 
+/** Mesma chamada, em streaming: `onTexto` recebe o texto à medida que é gerado. */
+export async function streamMessage(params: CreateParams, onTexto: (delta: string) => void, signal?: AbortSignal) {
+  const extra: Partial<Anthropic.Beta.MessageCreateParamsNonStreaming> = SUPPORTS_FALLBACK.has(params.model)
+    ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }
+    : {};
+  const stream = anthropic.beta.messages.stream({ ...params, ...extra }, { signal });
+  stream.on("text", (d) => onTexto(d));
+  return stream.finalMessage();
+}
+
 export type Rota = { model: string; effort: "low" | "medium" | "high"; motivo: string };
 
 const ANALISE = /\b(analis|compar|relat[oó]rio|estrat[eé]g|planej|por que|porque|investig|diagn[oó]stic|recomend|tend[eê]ncia|otimiz|proposta|elabor|redij|escrev[ae] (um|uma) (texto|e-?mail|proposta|documento))/;
@@ -46,8 +56,12 @@ const CONSULTA = /\b(quant[oa]s?|qual|quais|quando|onde|lista|mostra|me (diz|fal
  * Roteador de modelos (seção 2.1): pedido simples → modelo rápido; complexo → modelo forte.
  * Heurística barata primeiro; o modelo rápido só decide quando há dúvida.
  */
-export async function rotear(texto: string, temAnexo: boolean): Promise<Rota> {
+export async function rotear(texto: string, temAnexo: boolean, voz = false): Promise<Rota> {
   const t = texto.toLowerCase();
+  // Conversa por voz: latência manda. Modelo rápido, a não ser que peçam análise de verdade.
+  if (voz && !temAnexo) {
+    return ANALISE.test(t) ? { model: config.modelStrong, effort: "low", motivo: "voz + análise" } : { model: config.modelFast, effort: "low", motivo: "voz" };
+  }
   const forte = (motivo: string): Rota => ({ model: config.modelStrong, effort: "medium", motivo });
   const profundo = (motivo: string): Rota => ({ model: config.modelStrong, effort: "high", motivo });
   const rapido = (motivo: string): Rota => ({ model: config.modelFast, effort: "medium", motivo });

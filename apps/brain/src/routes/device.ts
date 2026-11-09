@@ -82,9 +82,9 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
 
     // Voz natural para as respostas
     dev.post("/device/tts", async (req) => {
-      const { texto } = z.object({ texto: z.string().min(1).max(4000) }).parse(req.body);
+      const { texto, velocidade } = z.object({ texto: z.string().min(1).max(4000), velocidade: z.number().min(0.7).max(1.2).optional() }).parse(req.body);
       if (!ttsConfigurado()) return { audio: null, motivo: "voz natural não configurada" };
-      const r = await sintetizar(texto);
+      const r = await sintetizar(texto, velocidade);
       return { audio: r.audio.toString("base64"), mime: r.mime };
     });
 
@@ -105,6 +105,34 @@ export async function registerDeviceRoutes(app: FastifyInstance) {
     dev.post("/device/panic", async (req) => {
       const n = await panic(req.device!.user_id, { pausar: true });
       return { interrompidas: n };
+    });
+
+    // Igual a /device/chat, mas devolve o texto aos poucos (NDJSON) para a voz começar antes.
+    dev.post("/device/chat-stream", async (req, reply) => {
+      const { texto, voz } = z.object({ texto: z.string().min(1).max(20000), voz: z.boolean().default(false) }).parse(req.body);
+      const user = await userById(req.device!.user_id);
+      reply.hijack();
+      const out = reply.raw;
+      out.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
+      out.flushHeaders?.();
+      const enviar = (o: unknown) => out.write(JSON.stringify(o) + "\n");
+      try {
+        if (!user || !user.ativo) {
+          enviar({ t: "fim", resposta: "Usuário inativo." });
+          return;
+        }
+        const ap = await handleApprovalReply(user, texto, voz ? "voz" : "app");
+        if (ap) {
+          enviar({ t: "fim", resposta: ap });
+          return;
+        }
+        const r = await runTask({ user, canal: voz ? "voz" : "app", texto, deviceId: req.device!.id, onTexto: (d) => enviar({ t: "delta", texto: d }) });
+        enviar({ t: "fim", resposta: r.resposta, aguardandoAprovacao: r.aguardandoAprovacao, taskId: r.taskId });
+      } catch (err) {
+        enviar({ t: "erro", erro: (err as Error).message });
+      } finally {
+        out.end();
+      }
     });
 
     // Pedido feito no PC (texto ou voz já transcrita)

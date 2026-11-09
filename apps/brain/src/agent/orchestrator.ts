@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { config } from "../lib/config.js";
 import { db, json } from "../lib/db.js";
 import { log } from "../lib/log.js";
 import { createApproval, approvalInstructions } from "./approvals.js";
-import { costUsd, createMessage, rotear } from "./llm.js";
+import { costUsd, createMessage, rotear, streamMessage } from "./llm.js";
 import { extractMemories } from "./memoryExtract.js";
 import { track, untrack } from "./panic.js";
 import { decidir } from "./permissions.js";
@@ -28,6 +29,8 @@ export interface RunInput {
   novaConversa?: boolean;
   /** App de PC que fez o pedido */
   deviceId?: string | null;
+  /** Streaming: recebe o texto da resposta enquanto é gerado (voz começa a falar antes). */
+  onTexto?: (delta: string) => void;
 }
 
 export interface RunResult {
@@ -118,18 +121,18 @@ export async function runTask(input: RunInput): Promise<RunResult> {
     return { taskId: "", resposta: `⚠️ Limite mensal de gastos com IA atingido (US$ ${limite.toFixed(2)}). Ajuste no painel para continuar.`, aguardandoAprovacao: false, custoUsd: 0 };
   }
 
-  const conversationId = await getConversation(user, canal, !!input.novaConversa);
-  const hist = await history(conversationId);
-  const anexosMeta = (input.anexos ?? []).map((a) => ({ tipo: a.tipo, nome: "nome" in a ? a.nome : undefined }));
-  await sql`insert into messages (conversation_id, autor, conteudo, anexos) values (${conversationId}, 'user', ${input.texto}, ${json(anexosMeta)})`;
-
-  // contexto dinâmico (memórias, perfil) e roteamento em paralelo
+  // Tudo o que não depende entre si roda em paralelo (o banco está em outra região: cada ida conta).
   const ctxPromise = dynamicContext(user, canal, input.texto);
-  const rota = await rotear(input.texto, (input.anexos?.length ?? 0) > 0);
-  const [task] = await sql<{ id: string }[]>`
-    insert into tasks (user_id, conversation_id, canal, pedido, modelo, executor)
-    values (${user.id}, ${conversationId}, ${canal}, ${input.texto}, ${rota.model}, 'nuvem') returning id`;
-  const taskId = task!.id;
+  const rotaPromise = rotear(input.texto, (input.anexos?.length ?? 0) > 0, canal === "voz");
+  const conversationId = await getConversation(user, canal, !!input.novaConversa);
+  const anexosMeta = (input.anexos ?? []).map((a) => ({ tipo: a.tipo, nome: "nome" in a ? a.nome : undefined }));
+  const [hist, rota] = await Promise.all([history(conversationId), rotaPromise]);
+  const taskId = randomUUID();
+  await Promise.all([
+    sql`insert into messages (conversation_id, autor, conteudo, anexos) values (${conversationId}, 'user', ${input.texto}, ${json(anexosMeta)})`,
+    sql`insert into tasks (id, user_id, conversation_id, canal, pedido, modelo, executor)
+        values (${taskId}, ${user.id}, ${conversationId}, ${canal}, ${input.texto}, ${rota.model}, 'nuvem')`,
+  ]);
 
   const ac = track(user.id);
   const ctx: ToolContext = { user, taskId, canal, signal: ac.signal, notify: input.notify ?? (async () => {}), deviceId: input.deviceId ?? null };
@@ -165,17 +168,15 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   try {
     for (let step = 0; step < config.maxAgentSteps; step++) {
       const tc = Date.now();
-      const res = await createMessage(
-        {
-          model: rota.model,
-          max_tokens: 16000,
-          output_config: { effort: rota.effort },
-          system,
-          tools: apiTools,
-          messages,
-        },
-        ac.signal,
-      );
+      const params = {
+        model: rota.model,
+        max_tokens: canal === "voz" ? 2000 : 16000,
+        output_config: { effort: rota.effort },
+        system,
+        tools: apiTools,
+        messages,
+      };
+      const res = input.onTexto ? await streamMessage(params, input.onTexto, ac.signal) : await createMessage(params, ac.signal);
       chamadas.push({
         modelo: res.model,
         ms: Date.now() - tc,
@@ -204,6 +205,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
         break;
       }
       if (text && step === 0) void ctx.notify(text).catch(() => {});
+      if (text && input.onTexto) input.onTexto("\n");
 
       messages.push({ role: "assistant", content: res.content });
       const results = await Promise.all(

@@ -121,6 +121,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
     return { taskId: "", resposta: `⚠️ Limite mensal de gastos com IA atingido (US$ ${limite.toFixed(2)}). Ajuste no painel para continuar.`, aguardandoAprovacao: false, custoUsd: 0 };
   }
 
+  const tInicio = Date.now();
   // Tudo o que não depende entre si roda em paralelo (o banco está em outra região: cada ida conta).
   const ctxPromise = dynamicContext(user, canal, input.texto);
   const rotaPromise = rotear(input.texto, (input.anexos?.length ?? 0) > 0, canal === "voz");
@@ -163,7 +164,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   let pendente: { id: string; nivel: "confirmar" | "pin" | "pin_voz"; resumo: string } | null = null;
   let status: "concluida" | "erro" | "cancelada" | "aguardando_aprovacao" = "concluida";
   const t0 = Date.now();
-  const chamadas: { modelo: string; ms: number; entrada: number; cache: number; saida: number }[] = [];
+  const chamadas: { modelo: string; ms: number; primeiro_ms?: number | null; entrada: number; cache: number; saida: number }[] = [];
 
   try {
     for (let step = 0; step < config.maxAgentSteps; step++) {
@@ -172,14 +173,27 @@ export async function runTask(input: RunInput): Promise<RunResult> {
         model: rota.model,
         max_tokens: canal === "voz" ? 2000 : 16000,
         output_config: { effort: rota.effort },
+        // conversa por voz no modelo rápido: sem raciocínio estendido, para a primeira palavra sair logo
+        ...(canal === "voz" && rota.model === config.modelFast ? { thinking: { type: "disabled" as const } } : {}),
         system,
         tools: apiTools,
         messages,
       };
-      const res = input.onTexto ? await streamMessage(params, input.onTexto, ac.signal) : await createMessage(params, ac.signal);
+      let primeiroMs: number | null = null;
+      const res = input.onTexto
+        ? await streamMessage(
+            params,
+            (d) => {
+              primeiroMs ??= Date.now() - tc;
+              input.onTexto!(d);
+            },
+            ac.signal,
+          )
+        : await createMessage(params, ac.signal);
       chamadas.push({
         modelo: res.model,
         ms: Date.now() - tc,
+        primeiro_ms: primeiroMs,
         entrada: res.usage.input_tokens ?? 0,
         cache: res.usage.cache_read_input_tokens ?? 0,
         saida: res.usage.output_tokens ?? 0,
@@ -246,7 +260,7 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   await sql`
     update tasks set status = ${status}, resposta = ${resposta}, fim = ${status === "aguardando_aprovacao" ? null : new Date()},
       tokens_entrada = ${tokIn}, tokens_saida = ${tokOut}, custo = ${custo},
-      plano_json = ${json({ rota, total_ms: Date.now() - t0, chamadas })}
+      plano_json = ${json({ rota, preparo_ms: t0 - tInicio, total_ms: Date.now() - t0, chamadas })}
     where id = ${taskId}`;
   await sql`insert into messages (conversation_id, autor, conteudo, tokens, custo) values (${conversationId}, 'assistant', ${resposta}, ${tokIn + tokOut}, ${custo})`;
   await sql`update conversations set ultima_msg_em = now() where id = ${conversationId}`;

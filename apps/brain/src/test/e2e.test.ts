@@ -10,7 +10,7 @@ import { after, before, describe, it } from "node:test";
 const DB = process.env.TEST_DATABASE_URL;
 
 // ------------------------------------------------------------------ API Anthropic falsa
-type Script = (body: any) => any;
+type Script = (body: any) => any | Promise<any>;
 let script: Script = () => ({});
 let fake: Server;
 const requests: any[] = [];
@@ -34,7 +34,7 @@ describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definid
         const body = JSON.parse(data || "{}");
         requests.push(body);
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify(script(body)));
+        void Promise.resolve(script(body)).then((r) => res.end(JSON.stringify(r)));
       });
     });
     await new Promise<void>((r) => fake.listen(0, r));
@@ -240,6 +240,108 @@ describe("Jarvis cérebro (e2e)", { skip: !DB && "TEST_DATABASE_URL não definid
     assert.equal(q.recurso, "android");
     assert.equal(q.status, "concluida");
     await devices.revogar(dev!.id, user.id);
+  });
+
+  it("skills: aprende com uma tarefa de várias etapas e reaproveita em pedido parecido", async () => {
+    const sql = mods.db.db();
+    const sistema = (body: any) => (Array.isArray(body.system) ? body.system.map((b: any) => b.text).join("\n") : String(body.system ?? ""));
+    const skillJson = {
+      acao: "nova",
+      melhorar_id: null,
+      nome: "Resumo da operação",
+      descricao: "Quando o usuário pede um panorama das rotinas e da equipe",
+      gatilhos: ["resumo da operação", "como está a operação", "panorama das rotinas e da equipe"],
+      passos: [
+        { ferramenta: "rotina_listar", instrucao: "Listar as rotinas ativas" },
+        { ferramenta: "usuarios_listar", instrucao: "Listar a equipe" },
+        { ferramenta: null, instrucao: "Resumir em poucas linhas" },
+      ],
+    };
+    let ofertou = false;
+    const roteiro = () => {
+      let call = 0;
+      return (body: any) => {
+        if (body.max_tokens === 16) return msg([{ type: "text", text: "SIMPLES" }]);
+        if (body.output_config?.format) {
+          if (sistema(body).includes("procedimentos reutilizáveis")) return msg([{ type: "text", text: JSON.stringify(skillJson) }]);
+          return msg([{ type: "text", text: JSON.stringify({ fatos: [] }) }]);
+        }
+        call++;
+        if (call === 1) {
+          if (sistema(body).includes("### Resumo da operação")) ofertou = true;
+          return msg(
+            [
+              { type: "tool_use", id: `tu_r${Math.random()}`, name: "rotina_listar", input: {} },
+              { type: "tool_use", id: `tu_u${Math.random()}`, name: "usuarios_listar", input: {} },
+            ],
+            "tool_use",
+          );
+        }
+        return msg([{ type: "text", text: "Operação em dia." }]);
+      };
+    };
+    const esperar = async (cond: () => Promise<boolean>) => {
+      for (let i = 0; i < 50 && !(await cond()); i++) await new Promise((r) => setTimeout(r, 100));
+    };
+
+    script = roteiro();
+    await mods.orch.runTask({ user: { ...user, pausado: false }, canal: "app", texto: "me passa o resumo da operação de hoje", novaConversa: true });
+    await esperar(async () => (await sql`select count(*)::int n from skills where user_id = ${user.id}`)[0].n > 0);
+    const [sk] = await sql`select id, nome, usos, ferramentas, status from skills where user_id = ${user.id}`;
+    assert.equal(sk?.nome, "Resumo da operação");
+    assert.deepEqual([...sk.ferramentas].sort(), ["rotina_listar", "usuarios_listar"]);
+    assert.equal(ofertou, false);
+
+    script = roteiro();
+    await mods.orch.runTask({ user: { ...user, pausado: false }, canal: "app", texto: "como está a operação hoje?", novaConversa: true });
+    assert.equal(ofertou, true, "skill aparece no contexto do pedido parecido");
+    await esperar(async () => (await sql`select usos from skills where id = ${sk.id}`)[0].usos >= 2);
+    const [depois] = await sql`select usos from skills where id = ${sk.id}`;
+    assert.ok(depois.usos >= 2, "uso contado");
+    const [t] = await sql`select skills_ofertadas from tasks where user_id = ${user.id} order by inicio desc limit 1`;
+    assert.deepEqual(t.skills_ofertadas, [sk.id]);
+  });
+
+  it("sub-agentes: executa as partes em paralelo, só com ferramentas de leitura", async () => {
+    const sistema = (body: any) => (Array.isArray(body.system) ? body.system.map((b: any) => b.text).join("\n") : "");
+    let principal = 0;
+    let ferramentasSub: string[] = [];
+    script = async (body) => {
+      if (body.max_tokens === 16) return msg([{ type: "text", text: "COMPLEXO" }]);
+      if (body.output_config?.format) return msg([{ type: "text", text: JSON.stringify({ fatos: [], acao: "nenhuma", melhorar_id: null, nome: "", descricao: "", gatilhos: [], passos: [] }) }]);
+      if (sistema(body).includes("SUB-AGENTE")) {
+        ferramentasSub = body.tools.map((t: any) => t.name);
+        await new Promise((r) => setTimeout(r, 400));
+        return msg([{ type: "text", text: `resultado de ${body.messages[0].content}` }]);
+      }
+      principal++;
+      if (principal === 1) {
+        return msg(
+          [
+            {
+              type: "tool_use",
+              id: "tu_sub",
+              name: "subagentes",
+              input: { partes: [{ titulo: "Empresa A", instrucao: "parte A" }, { titulo: "Empresa B", instrucao: "parte B" }, { titulo: "Empresa C", instrucao: "parte C" }] },
+            },
+          ],
+          "tool_use",
+        );
+      }
+      const res = body.messages[body.messages.length - 1].content[0].content as string;
+      assert.match(res, /resultado de parte A/);
+      assert.match(res, /resultado de parte B/);
+      assert.match(res, /resultado de parte C/);
+      return msg([{ type: "text", text: "Relatório consolidado." }]);
+    };
+    const t0 = Date.now();
+    const r = await mods.orch.runTask({ user: { ...user, pausado: false }, canal: "app", texto: "relatório das três empresas", novaConversa: true });
+    const ms = Date.now() - t0;
+    assert.equal(r.resposta, "Relatório consolidado.");
+    assert.ok(ms < 1100, `as 3 partes de 400 ms rodaram em paralelo (levou ${ms} ms)`);
+    assert.ok(ferramentasSub.includes("rotina_listar"), "leitura liberada");
+    assert.ok(!ferramentasSub.includes("rotina_criar") && !ferramentasSub.includes("gmail_enviar") && !ferramentasSub.includes("subagentes"), "nada que muda");
+    assert.ok(r.custoUsd > 0.004, "custo dos sub-agentes somado à tarefa");
   });
 
   it("botão de pânico cancela pendências e pausa", async () => {

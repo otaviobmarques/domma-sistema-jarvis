@@ -1,4 +1,4 @@
-import { rotinaAlternar, rotinaApagar, rotinaSalvar, skillStatus } from "@/app/actions";
+import { rotinaAlternar, rotinaApagar, rotinaSalvar, skillApagar, skillStatus } from "@/app/actions";
 import { ActionButton, RunRoutine } from "@/components/client";
 import { requireUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
@@ -16,8 +16,10 @@ export default async function Rotinas() {
   const [rotinas, skills] = await Promise.all([
     sql<{ id: string; nome: string; cron: string; instrucao: string; ativa: boolean; critica: boolean; ultima_execucao: Date | null }[]>`
       select id, nome, cron, instrucao, ativa, critica, ultima_execucao from routines where user_id = ${u.id} order by criado_em`,
-    sql<{ id: string; nome: string; descricao: string | null; versao: number; usos: number; taxa_sucesso: number; status: string }[]>`
-      select id, nome, descricao, versao, usos, taxa_sucesso, status from skills where tenant_id = ${u.tenant_id} order by nome, versao desc`,
+    sql<{ id: string; nome: string; descricao: string | null; versao: number; usos: number; taxa_sucesso: number; status: string; passos_json: { ferramenta: string | null; instrucao: string }[]; gatilhos: string[]; ultimo_uso: Date | null; compartilhada: boolean }[]>`
+      select id, nome, descricao, versao, usos, taxa_sucesso, status, passos_json, gatilhos, ultimo_uso, user_id is null as compartilhada
+      from skills where tenant_id = ${u.tenant_id} and (user_id = ${u.id} or user_id is null)
+      order by status = 'ativa' desc, usos desc, nome`,
   ]);
 
   return (
@@ -67,39 +69,43 @@ export default async function Rotinas() {
 
       <section className="space-y-2">
         <h2 className="font-semibold">Skills aprendidas</h2>
-        <p className="muted text-sm">Procedimentos que o Jarvis salvou para repetir mais rápido. (O aprendizado automático de skills chega na Fase 4.)</p>
-        <div className="card overflow-x-auto">
-          <table className="t">
-            <thead>
-              <tr>
-                <th>Skill</th>
-                <th>Versão</th>
-                <th>Usos</th>
-                <th>Sucesso</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {skills.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    {s.nome}
-                    <div className="muted text-xs">{s.descricao}</div>
-                  </td>
-                  <td>v{s.versao}</td>
-                  <td>{s.usos}</td>
-                  <td>{Math.round(s.taxa_sucesso * 100)}%</td>
-                  <td>
-                    <span className="tag">{s.status}</span>
-                  </td>
-                  <td>{pode && <ActionButton label={s.status === "ativa" ? "Marcar revisão" : "Ativar"} action={skillStatus.bind(null, s.id, s.status === "ativa" ? "precisa_revisao" : "ativa")} />}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!skills.length && <p className="muted text-sm p-2">Nenhuma skill salva ainda.</p>}
-        </div>
+        <p className="muted text-sm">
+          Quando uma tarefa de várias etapas dá certo, o assistente guarda o caminho como uma skill. Num pedido parecido, ele já sabe o que fazer. Cada uso conta acerto ou erro (inclusive o 👎 numa tarefa); skills que falham muito vão para revisão e deixam de ser usadas.
+        </p>
+        {skills.map((s) => {
+          const podeMexer = !s.compartilhada || pode;
+          return (
+            <details key={s.id} className="card text-sm">
+              <summary className="cursor-pointer flex flex-wrap items-center gap-2">
+                <b>{s.status === "ativa" ? "🧠" : "⚠️"} {s.nome}</b>
+                <span className="tag">v{s.versao}</span>
+                <span className="tag">{s.usos} {s.usos === 1 ? "uso" : "usos"}</span>
+                <span className="tag">{Math.round(s.taxa_sucesso * 100)}% de acerto</span>
+                {s.status !== "ativa" && <span className="tag">em revisão</span>}
+                {s.compartilhada && <span className="tag">da empresa</span>}
+              </summary>
+              <div className="mt-3 space-y-2">
+                {s.descricao && <p>{s.descricao}</p>}
+                {!!s.gatilhos?.length && <p className="muted text-xs">Pedidos parecidos: {s.gatilhos.map((g) => `“${g}”`).join(" · ")}</p>}
+                <ol className="list-decimal ml-5 space-y-1">
+                  {s.passos_json.map((p, i) => (
+                    <li key={i}>
+                      {p.ferramenta && <code className="text-xs">{p.ferramenta}</code>} {p.instrucao}
+                    </li>
+                  ))}
+                </ol>
+                <p className="muted text-xs">{s.ultimo_uso ? `Último uso: ${s.ultimo_uso.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : "Ainda não foi reutilizada"}</p>
+                {podeMexer && (
+                  <div className="flex gap-2">
+                    <ActionButton label={s.status === "ativa" ? "Pôr em revisão" : "Reativar"} action={skillStatus.bind(null, s.id, s.status === "ativa" ? "precisa_revisao" : "ativa")} />
+                    <ActionButton label="Apagar" confirmText={`Apagar a skill “${s.nome}”?`} action={skillApagar.bind(null, s.id)} />
+                  </div>
+                )}
+              </div>
+            </details>
+          );
+        })}
+        {!skills.length && <p className="muted text-sm">Nenhuma skill ainda. Elas aparecem sozinhas conforme você usa o assistente em tarefas de várias etapas.</p>}
       </section>
     </div>
   );

@@ -9,6 +9,7 @@ import { costUsd, createMessage, rotear, streamMessage } from "./llm.js";
 import { extractMemories } from "./memoryExtract.js";
 import { track, untrack } from "./panic.js";
 import { decidir } from "./permissions.js";
+import { aprenderSkill, buscarSkills, registrarUso, skillsNoContexto } from "./skills.js";
 import { dynamicContext, STABLE_SYSTEM } from "./prompt.js";
 import { ALL_TOOLS, TOOLS_BY_NAME } from "./tools/index.js";
 import type { Canal, ToolContext, ToolDef, User } from "./types.js";
@@ -138,6 +139,10 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   const tInicio = Date.now();
   // Tudo o que não depende entre si roda em paralelo (o banco está em outra região: cada ida conta).
   const ctxPromise = dynamicContext(user, canal, input.texto);
+  const skillsPromise = buscarSkills(user, input.texto).catch((err) => {
+    log.warn({ err }, "busca de skills falhou");
+    return [];
+  });
   const rotaPromise = rotear(input.texto, (input.anexos?.length ?? 0) > 0, canal === "voz");
   const conversationId = await getConversation(user, canal, !!input.novaConversa);
   const anexosMeta = (input.anexos ?? []).map((a) => ({ tipo: a.tipo, nome: "nome" in a ? a.nome : undefined }));
@@ -152,7 +157,24 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   registros.catch(() => {});
 
   const ac = track(user.id);
-  const ctx: ToolContext = { user, taskId, canal, signal: ac.signal, notify: input.notify ?? (async () => {}), deviceId: input.deviceId ?? null };
+  let custo = 0;
+  let tokIn = 0;
+  let tokOut = 0;
+  const contexto = await ctxPromise;
+  const ctx: ToolContext = {
+    user,
+    taskId,
+    canal,
+    signal: ac.signal,
+    notify: input.notify ?? (async () => {}),
+    deviceId: input.deviceId ?? null,
+    contexto,
+    addCusto: (usd, i, o) => {
+      custo += usd;
+      tokIn += i;
+      tokOut += o;
+    },
+  };
 
   // Ferramentas que o perfil pode usar (as negadas nem aparecem para o modelo)
   const tools = ALL_TOOLS.filter((t) => t.perfis.includes(user.perfil));
@@ -169,13 +191,12 @@ export async function runTask(input: RunInput): Promise<RunResult> {
 
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
     { type: "text", text: STABLE_SYSTEM, cache_control: { type: "ephemeral" } },
-    { type: "text", text: await ctxPromise },
+    { type: "text", text: contexto },
   ];
+  const skills = await skillsPromise;
+  if (skills.length) system.push({ type: "text", text: skillsNoContexto(skills) });
   const messages: Anthropic.Beta.BetaMessageParam[] = [...hist, { role: "user", content: userContent(input.texto, input.anexos) }];
 
-  let custo = 0;
-  let tokIn = 0;
-  let tokOut = 0;
   let resposta = "";
   let pendente: { id: string; nivel: "confirmar" | "pin" | "pin_voz"; resumo: string } | null = null;
   let status: "concluida" | "erro" | "cancelada" | "aguardando_aprovacao" = "concluida";
@@ -278,13 +299,21 @@ export async function runTask(input: RunInput): Promise<RunResult> {
   await sql`
     update tasks set status = ${status}, resposta = ${resposta}, fim = ${status === "aguardando_aprovacao" ? null : new Date()},
       tokens_entrada = ${tokIn}, tokens_saida = ${tokOut}, custo = ${custo},
-      plano_json = ${json({ rota, preparo_ms: t0 - tInicio, total_ms: Date.now() - t0, chamadas })}
+      plano_json = ${json({ rota, preparo_ms: t0 - tInicio, total_ms: Date.now() - t0, chamadas })},
+      skills_ofertadas = ${skills.map((k) => k.id)}
     where id = ${taskId}`;
   await sql`insert into messages (conversation_id, autor, conteudo, tokens, custo) values (${conversationId}, 'assistant', ${resposta}, ${tokIn + tokOut}, ${custo})`;
   await sql`update conversations set ultima_msg_em = now() where id = ${conversationId}`;
 
   if (status === "concluida" || status === "aguardando_aprovacao") {
     void extractMemories(user, canal, taskId, input.texto, resposta).catch((err) => log.warn({ err }, "extração de memória falhou"));
+  }
+  // Skills: mede as que foram seguidas e tenta aprender uma nova com esta tarefa
+  if (status === "concluida" || status === "erro") {
+    void (async () => {
+      await registrarUso(taskId, skills, status === "concluida");
+      if (status === "concluida") await aprenderSkill(user, taskId, input.texto, resposta);
+    })().catch((err) => log.warn({ err }, "skills: aprendizado falhou"));
   }
   return { taskId, resposta, aguardandoAprovacao: status === "aguardando_aprovacao", custoUsd: custo };
 }
@@ -356,4 +385,58 @@ async function executeTool(
     await record("", msg);
     return { content: `Erro: ${msg}`, isError: true };
   }
+}
+
+// ------------------------------------------------------------------ sub-agentes (Fase 4)
+const SUB_MAX_PASSOS = 12;
+
+/**
+ * Executa uma parte de um pedido grande, em paralelo com as outras, só com ferramentas de leitura
+ * (nada que mude, envie ou apague). Devolve o resultado em texto para o agente principal juntar.
+ */
+export async function runSubagente(ctx: ToolContext, titulo: string, instrucao: string, complexa: boolean): Promise<string> {
+  const tools = ALL_TOOLS.filter((t) => t.perfis.includes(ctx.user.perfil) && !t.muda && t.nivel === "livre" && t.name !== "subagentes");
+  const model = complexa ? config.modelStrong : config.modelFast;
+  const apiTools: Anthropic.Beta.BetaToolUnion[] = tools.map((t) => ({ name: t.name, description: t.description, input_schema: inputSchema(t) }));
+  apiTools.push(model.includes("haiku") ? { type: "web_search_20250305", name: "web_search", max_uses: 5 } : { type: "web_search_20260209", name: "web_search", max_uses: 5 });
+  const system: Anthropic.Beta.BetaTextBlockParam[] = [
+    { type: "text", text: STABLE_SYSTEM, cache_control: { type: "ephemeral" } },
+    {
+      type: "text",
+      text: `${ctx.contexto ?? ""}
+
+Você está agindo como SUB-AGENTE: executa só a parte "${titulo}" de um pedido maior, em paralelo com outras partes.
+- Você só tem ferramentas de leitura. Não tente mudar, enviar ou apagar nada.
+- Não converse nem faça perguntas: faça o que der e devolva o resultado.
+- Resposta final: objetiva, com os números, nomes e fontes encontrados, e diga claramente o que não conseguiu obter.`,
+    },
+  ];
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: instrucao }];
+  const subCtx: ToolContext = { ...ctx, subagente: true };
+  for (let passo = 0; passo < SUB_MAX_PASSOS; passo++) {
+    const res = await createMessage({ model, max_tokens: 8000, output_config: { effort: complexa ? "medium" : "low" }, system, tools: apiTools, messages }, ctx.signal);
+    ctx.addCusto?.(
+      costUsd(res.model, res.usage),
+      (res.usage.input_tokens ?? 0) + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0),
+      res.usage.output_tokens ?? 0,
+    );
+    const text = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("").trim();
+    if (res.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: res.content });
+      continue;
+    }
+    const toolUses = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
+    if (res.stop_reason !== "tool_use" || !toolUses.length) return text || "(sem resultado)";
+    messages.push({ role: "assistant", content: res.content });
+    const results = await Promise.all(
+      toolUses.map(async (tu): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+        // ferramenta fora da lista (ou que muda algo) é recusada aqui também
+        if (!tools.some((t) => t.name === tu.name)) return { type: "tool_result", tool_use_id: tu.id, content: "Sub-agentes só podem usar ferramentas de leitura.", is_error: true };
+        const out = await executeTool(tu, subCtx, () => {});
+        return { type: "tool_result", tool_use_id: tu.id, content: out.content, is_error: out.isError || undefined };
+      }),
+    );
+    messages.push({ role: "user", content: results });
+  }
+  return "Atingi o limite de passos nesta parte.";
 }

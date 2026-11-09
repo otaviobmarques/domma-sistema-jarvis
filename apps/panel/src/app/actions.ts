@@ -94,7 +94,17 @@ export async function retomar(global: boolean): Promise<Result> {
 
 export async function feedback(taskId: string, valor: 1 | -1) {
   const u = await requireUser();
+  const [t] = await sql<{ antes: number | null; skills: string[] }[]>`
+    select feedback as antes, skills_ofertadas as skills from tasks where id = ${taskId} and user_id = ${u.id}`;
+  if (!t) return;
   await sql`update tasks set feedback = ${valor} where id = ${taskId} and user_id = ${u.id}`;
+  // 👎 conta como falha das skills usadas nesta tarefa (uma vez só)
+  if (valor === -1 && t.antes !== -1 && t.skills.length) {
+    await sql`
+      update skills set usos = usos + 1, taxa_sucesso = taxa_sucesso * 0.7,
+        status = case when usos + 1 >= 3 and taxa_sucesso * 0.7 < 0.6 then 'precisa_revisao' else status end
+      where id = any(${t.skills}::uuid[]) and tenant_id = ${u.tenant_id}`;
+  }
   revalidatePath("/tarefas");
 }
 
@@ -163,9 +173,22 @@ export async function rotinaRodar(id: string): Promise<Result> {
   }
 }
 
+// Cada usuário cuida das próprias skills; dono e gestor também das compartilhadas (sem dono).
 export async function skillStatus(id: string, status: string) {
-  const u = await requireUser(["dono", "gestor"]);
-  await sql`update skills set status = ${status} where id = ${id} and tenant_id = ${u.tenant_id}`;
+  const u = await requireUser();
+  if (!["ativa", "precisa_revisao"].includes(status)) return;
+  const gestor = u.perfil === "dono" || u.perfil === "gestor";
+  await sql`
+    update skills set status = ${status}, taxa_sucesso = case when ${status} = 'ativa' then greatest(taxa_sucesso, 0.8) else taxa_sucesso end
+    where id = ${id} and tenant_id = ${u.tenant_id} and (user_id = ${u.id} or (user_id is null and ${gestor}))`;
+  revalidatePath("/rotinas");
+}
+
+export async function skillApagar(id: string) {
+  const u = await requireUser();
+  const gestor = u.perfil === "dono" || u.perfil === "gestor";
+  await sql`delete from skills where id = ${id} and tenant_id = ${u.tenant_id} and (user_id = ${u.id} or (user_id is null and ${gestor}))`;
+  await sql`insert into audit_log (user_id, acao, alvo) values (${u.id}, 'skill.apagar', ${id})`.catch(() => {});
   revalidatePath("/rotinas");
 }
 

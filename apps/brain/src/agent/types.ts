@@ -33,6 +33,12 @@ export interface ToolContext {
   notify: (text: string) => Promise<void>;
   /** Dispositivo de onde veio o pedido (app de PC), preferido para ações locais. */
   deviceId?: string | null;
+  /** Contexto dinâmico da tarefa (hora, usuário, memórias) — repassado aos sub-agentes. */
+  contexto?: string;
+  /** Soma custo/tokens de chamadas extras (sub-agentes) ao total da tarefa. */
+  addCusto?: (usd: number, tokIn: number, tokOut: number) => void;
+  /** true dentro de um sub-agente (não pode criar outros). */
+  subagente?: boolean;
 }
 
 /** Saída rica de ferramenta (ex.: print da tela para o modelo enxergar). */

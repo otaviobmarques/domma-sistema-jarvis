@@ -7,12 +7,14 @@ import * as google from "./google.js";
 import * as memory from "./memory.js";
 import * as pc from "./pc.js";
 import * as routines from "./routines.js";
+import * as sub from "./subagentes.js";
 
 /** Ordem estável (importante para o cache de prompt). */
 export const ALL_TOOLS: ToolDef[] = [
   memory.memoriaBuscar,
   memory.memoriaSalvar,
   memory.memoriaEsquecer,
+  sub.subagentes,
   google.gmailBuscar,
   google.gmailContar,
   google.gmailLer,

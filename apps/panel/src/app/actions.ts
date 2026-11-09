@@ -252,7 +252,10 @@ export async function painelAcesso(form: FormData): Promise<Result> {
     const alvo = { id: userId };
     await sql`insert into audit_log (user_id, acao, alvo, depois) values (${u.id}, 'usuario.acesso_painel', ${alvo.id}, ${sql.json({ login })})`;
     revalidatePath("/usuarios");
-    return { ok: true, msg: `Acesso criado. Login: ${login} — a pessoa troca a senha no primeiro acesso.` };
+    return {
+      ok: true,
+      msg: r!.r === "redefinido" ? `Senha redefinida. Login: ${login} — a pessoa cria uma nova no próximo acesso.` : `Acesso criado. Login: ${login} — a pessoa cria a própria senha no primeiro acesso.`,
+    };
   } catch (e) {
     return fail(e);
   }

@@ -50,7 +50,7 @@ export default async function Usuarios() {
   const dono = me.perfil === "dono";
   const [users, empresas, links, tentativas] = await Promise.all([
     sql<any[]>`select id, nome, perfil, whatsapp, email, ativo, autonomia, pausado, pin_hash is not null as tem_pin, auth_user_id is not null as tem_login,
-               (select a.email from auth.users a where a.id = users.auth_user_id) as login_email
+               case when auth_user_id is not null then painel_login(auth_user_id) end as login_email
                from users where tenant_id = ${me.tenant_id} order by perfil, nome`,
     sql<{ id: string; nome: string }[]>`select id, nome from companies where tenant_id = ${me.tenant_id} order by nome`,
     sql<{ user_id: string; company_id: string }[]>`select uc.* from user_companies uc join users u on u.id = uc.user_id where u.tenant_id = ${me.tenant_id}`,

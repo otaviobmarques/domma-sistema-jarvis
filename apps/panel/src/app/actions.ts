@@ -245,31 +245,11 @@ export async function painelAcesso(form: FormData): Promise<Result> {
   if (!senhaForte(senha)) return { ok: false, msg: "Senha provisória: pelo menos 8 caracteres, com letras e números." };
   const email = loginToEmail(login);
   try {
-    const [alvo] = await sql<{ id: string; nome: string; auth_user_id: string | null }[]>`
-      select id, nome, auth_user_id from users where id = ${userId} and tenant_id = ${u.tenant_id}`;
-    if (!alvo) return { ok: false, msg: "Usuário não encontrado." };
-    const [outro] = await sql<{ id: string }[]>`select id from auth.users where lower(email) = ${email} and id is distinct from ${alvo.auth_user_id}::uuid`;
-    if (outro) return { ok: false, msg: "Esse login já é usado por outra pessoa." };
-    if (alvo.auth_user_id) {
-      await sql`update auth.users set email = ${email}, encrypted_password = extensions.crypt(${senha}, extensions.gen_salt('bf')),
-                  raw_user_meta_data = raw_user_meta_data || ${sql.json({ trocar_senha: true })}, updated_at = now()
-                where id = ${alvo.auth_user_id}`;
-      await sql`update auth.identities set identity_data = identity_data || ${sql.json({ email })}, updated_at = now() where user_id = ${alvo.auth_user_id} and provider = 'email'`;
-    } else {
-      await sql.begin(async (tx) => {
-        const [au] = await tx<{ id: string }[]>`
-          insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_new, recovery_token)
-          values ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', ${email},
-            extensions.crypt(${senha}, extensions.gen_salt('bf')), now(), ${tx.json({ provider: "email", providers: ["email"] })},
-            ${tx.json({ nome: alvo.nome, trocar_senha: true })}, now(), now(), '', '', '', '')
-          returning id`;
-        await tx`
-          insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
-          values (gen_random_uuid(), ${au!.id}, ${au!.id}, ${tx.json({ sub: au!.id, email, email_verified: true })}, 'email', now(), now(), now())`;
-        await tx`update users set auth_user_id = ${au!.id} where id = ${alvo.id}`;
-      });
-    }
+    const [r] = await sql<{ r: string }[]>`select painel_definir_acesso(${userId}, ${u.tenant_id}, ${email}, ${senha}) as r`;
+    if (r!.r === "nao_encontrado") return { ok: false, msg: "Usuário não encontrado." };
+    if (r!.r === "login_em_uso") return { ok: false, msg: "Esse login já é usado por outra pessoa." };
+    if (r!.r === "senha_fraca") return { ok: false, msg: "Senha provisória fraca." };
+    const alvo = { id: userId };
     await sql`insert into audit_log (user_id, acao, alvo, depois) values (${u.id}, 'usuario.acesso_painel', ${alvo.id}, ${sql.json({ login })})`;
     revalidatePath("/usuarios");
     return { ok: true, msg: `Acesso criado. Login: ${login} — a pessoa troca a senha no primeiro acesso.` };
@@ -281,10 +261,8 @@ export async function painelAcesso(form: FormData): Promise<Result> {
 export async function painelRemoverAcesso(userId: string) {
   const u = await requireUser(["dono"]);
   if (userId === u.id) return;
-  const [alvo] = await sql<{ auth_user_id: string | null }[]>`select auth_user_id from users where id = ${userId} and tenant_id = ${u.tenant_id}`;
-  if (!alvo?.auth_user_id) return;
-  await sql`update users set auth_user_id = null where id = ${userId}`;
-  await sql`delete from auth.users where id = ${alvo.auth_user_id}`; // apaga sessões e identidades em cascata
+  const [r] = await sql<{ ok: boolean }[]>`select painel_remover_acesso(${userId}, ${u.tenant_id}) as ok`;
+  if (!r?.ok) return;
   await sql`insert into audit_log (user_id, acao, alvo) values (${u.id}, 'usuario.remover_acesso_painel', ${userId})`;
   revalidatePath("/usuarios");
 }
